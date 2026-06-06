@@ -453,3 +453,44 @@ Rules:
 - `piece_type` must always be in the range `PIECE_I` through `PIECE_L`, encoded as 0 through 6.
 - The module must not output `PIECE_NONE`.
 - The mapping from LFSR state to piece type does not need to be perfectly uniform for the first playable version.
+
+### `score_level.v`
+
+Function:
+
+Update score, total cleared line count, and level after line clear events. This is an internal helper module for `game_core` bookkeeping logic, not a VGA or IO external interface.
+
+Interface:
+
+```verilog
+module score_level (
+    input  wire        clk_100m,
+    input  wire        rst,
+    input  wire        clear_event,
+    input  wire [2:0]  clear_count,
+    output reg  [15:0] score,
+    output reg  [7:0]  lines,
+    output reg  [3:0]  level
+);
+```
+
+Reset rules:
+
+- On active-high `rst`, `score = 0`, `lines = 0`, and `level = 1`.
+
+Update rules:
+
+- The module runs in the `clk_100m` clock domain.
+- State updates only when `clear_event = 1` and `clear_count` is 1, 2, 3, or 4.
+- Other `clear_count` values are treated as no clear.
+- `lines` increases by `clear_count`.
+- `level` is computed from the updated total line count as `lines / 10 + 1`.
+- `level` is capped at 15.
+- `score` is 16 bits and may naturally wrap on overflow.
+
+Scoring rules:
+
+- 1 cleared line: `100 * level`
+- 2 cleared lines: `300 * level`
+- 3 cleared lines: `500 * level`
+- 4 cleared lines: `800 * level`
