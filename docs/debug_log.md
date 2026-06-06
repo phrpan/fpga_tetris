@@ -1,113 +1,283 @@
-# Debug Log
+# 调试日志
 
-## Day 1
+本文记录游戏核心相关模块从基础定义、单模块仿真、核心集成到上板调试的主要调试过程。记录内容仅覆盖当前已完成的游戏核心链路，不代表完整 VGA 俄罗斯方块游戏已经完成验证。
 
-### Member 1
+## 1. 公共常量定义：`game_defs.vh`
 
-Completed:
+调试目标：
 
-- 
+- 创建 `rtl/common/game_defs.vh`，统一定义棋盘尺寸、方块类型、棋盘 cell 编码和游戏状态编码。
 
-Problems:
+遇到的问题：
 
-- 
+- `game_defs.vh` 中使用的是 `localparam`，如果加入 include guard，同一个编译单元内多个 module 分别 `include` 时，后续 module 可能无法获得这些局部常量定义。
 
-Solutions:
+解决方法：
 
-- 
+- 在 `game_defs.vh` 中定义 `BOARD_COLS=10`、`BOARD_ROWS=20`，以及 `PIECE_*`、`CELL_*`、`GS_*` 常量。
+- 删除 include guard，使每个使用该文件的 module 都能在 module 内部独立展开一份 `localparam` 定义。
 
-Next:
+验证结果：
 
-- 
+- 后续 `piece_rom`、`game_core_minimal`、`collision_check`、`line_clear`、`random_lfsr`、`score_level` 和 `game_core` 均可通过 module 内部 `include` 使用统一常量。
 
-### Member 2
+## 2. 方块形状 ROM：`piece_rom.v`
 
-Completed:
+调试目标：
 
-- 
+- 创建 `rtl/game/piece_rom.v` 和 `sim/tb_piece_rom.v`，提供七种俄罗斯方块在 4 种旋转状态下的 4 个 block 局部坐标。
 
-Problems:
+遇到的问题：
 
-- 
+- 需要保证所有输出坐标均位于 4x4 局部坐标系内，并且非法输入不能产生未知值或越界坐标。
 
-Solutions:
+解决方法：
 
-- 
+- 使用 Verilog-2001 `case` 语句实现 I、O、T、S、Z、J、L 七种方块和 4 种 rotation 的坐标查表。
+- 在 testbench 中遍历 7 种方块、4 种旋转、4 个 block，打印 `dx/dy` 并检查坐标不超过 3。
 
-Next:
+验证结果：
 
-- 
+- `piece_rom.v` 和 `tb_piece_rom.v` 已通过 Vivado XSim 仿真，仿真结束输出 `PASS`。
 
-### Member 3
+## 3. 最小游戏核心：`game_core_minimal.v`
 
-Completed:
+调试目标：
 
-- 
+- 创建 `rtl/game/game_core_minimal.v` 和 `sim/tb_game_core_minimal.v`，验证最小状态机、开始按键、左右移动和旋转链路。
 
-Problems:
+遇到的问题：
 
-- 
+- 该阶段暂不引入棋盘、碰撞、锁定、消行和计分，需要先验证基础状态流和输入 pulse 行为。
 
-Solutions:
+解决方法：
 
-- 
+- 复位后进入 `GS_TITLE`，固定当前方块为 `PIECE_T`，初始位置为 `x=3, y=0`。
+- `btn_start_pulse` 后进入 `GS_PLAY`，在 `GS_PLAY` 下响应 left、right 和 rotate pulse，并限制水平边界。
 
-Next:
+验证结果：
 
-- 
+- `game_core_minimal.v` 和 `tb_game_core_minimal.v` 已通过 Vivado XSim 仿真，基础状态机和按键响应正确。
 
-## Day 2
+## 4. 碰撞检测模块：`collision_check.v`
 
-### Member 1
+调试目标：
 
-Completed:
+- 创建 `rtl/game/collision_check.v` 和 `sim/tb_collision_check.v`，为正式游戏核心提供边界和已有方块碰撞判断。
 
-- 
+遇到的问题：
 
-Problems:
+- 需要同时处理左边界、右边界、底部边界、棋盘已有 cell，以及 `block_y < 0` 的顶部生成区域。
 
-- 
+解决方法：
 
-Solutions:
+- 通过 4 个 `piece_rom` 得到当前方块 4 个 block 的局部坐标。
+- 对 `block_x < 0`、`block_x >= BOARD_COLS`、`block_y >= BOARD_ROWS` 判定碰撞。
+- 对 `block_y < 0` 的 block 不查询棋盘且不判定碰撞。
+- 对 `block_y >= 0` 的 block 查询棋盘 cell，非 `CELL_EMPTY` 时判定碰撞。
 
-- 
+验证结果：
 
-Next:
+- `collision_check.v` 已通过 Vivado XSim 仿真，覆盖空棋盘、左右边界、底部边界、已有方块和顶部生成区域等用例。
 
-- 
+## 5. 清行模块：`line_clear.v`
 
-### Member 2
+调试目标：
 
-Completed:
+- 创建 `rtl/game/line_clear.v` 和 `sim/tb_line_clear.v`，验证扁平化棋盘格式下的满行检测和压缩逻辑。
 
-- 
+遇到的问题：
 
-Problems:
+- 需要确认 20 行 x 10 列 x 4 bit 的 800-bit 扁平化棋盘索引规则一致，并保证清行后上方行正确下移、顶部补空行。
 
-- 
+解决方法：
 
-Solutions:
+- 使用 `cell_index = row * BOARD_COLS + col`，对应 bit 范围为 `cell_index*4 +: 4`。
+- 对每行 10 个 cell 是否全非空进行判断，输出 `clear_line_mask` 和 `clear_count`，并生成压缩后的 `board_flat_out`。
 
-- 
+验证结果：
 
-Next:
+- `line_clear.v` 已通过 Vivado XSim 仿真，覆盖空棋盘、底部单行、底部双行、中间行清除和非满行不清除等用例。
 
-- 
+## 6. 随机方块模块：`random_lfsr.v`
 
-### Member 3
+调试目标：
 
-Completed:
+- 创建 `rtl/game/random_lfsr.v` 和 `sim/tb_random_lfsr.v`，为正式游戏核心提供 `PIECE_I` 到 `PIECE_L` 范围内的下一个方块类型。
 
-- 
+遇到的问题：
 
-Problems:
+- LFSR 不能进入全 0 状态，输出也不能产生 `PIECE_NONE`。
 
-- 
+解决方法：
 
-Solutions:
+- 使用 8-bit LFSR，复位后初始化为非零值 `8'hA5`。
+- 在 `enable` 有效时更新 LFSR，并将 LFSR 值映射到 0 到 6 范围内。
 
-- 
+验证结果：
 
-Next:
+- `random_lfsr.v` 已通过 Vivado XSim 仿真，连续 enable 多次时输出始终位于 0 到 6，并且不是一直不变。
 
-- 
+## 7. 分数和等级模块：`score_level.v`
+
+调试目标：
+
+- 创建 `rtl/game/score_level.v` 和 `sim/tb_score_level.v`，实现分数、总消行数和等级更新逻辑。
+
+遇到的问题：
+
+- 需要按照更新后的总消行数计算等级，并限制等级最大值，同时处理非法 `clear_count`。
+
+解决方法：
+
+- 复位后设置 `score=0`、`lines=0`、`level=1`。
+- `clear_event=1` 且 `clear_count` 为 1 到 4 时更新分数和总行数。
+- 按 1/2/3/4 行分别加 `100/300/500/800 * level`，等级按 `lines / 10 + 1` 计算且最大不超过 15。
+
+验证结果：
+
+- `score_level.v` 已通过 Vivado XSim 仿真，覆盖复位、清 1 行、清 4 行、累计到 10 行升级、无事件不更新和 `clear_count=0` 不更新等用例。
+
+## 8. 游戏核心初版：`game_core.v`
+
+调试目标：
+
+- 创建 `rtl/game/game_core.v` 和 `sim/tb_game_core.v`，集成 `piece_rom`、`collision_check`、`line_clear`、`random_lfsr` 和 `score_level`，形成可仿真的基础游戏核心。
+
+遇到的问题：
+
+- 初版需要同时实现状态机、棋盘、移动、旋转、重力下落、锁定、清行和计分，但暂不实现 hold、ghost、hard drop、pause、clear animation、audio pulse 和 wall kick。
+
+解决方法：
+
+- 实现 `GS_TITLE`、`GS_SPAWN`、`GS_PLAY`、`GS_LOCK`、`GS_CLEAR` 和 `GS_GAME_OVER` 基础状态流。
+- 使用碰撞检测模块判断移动、旋转、下落和出生位置。
+- 锁定方块时将 `PIECE_*` 映射为 `CELL_I` 到 `CELL_L` 后写入棋盘，避免直接写入 `piece_type`。
+
+验证结果：
+
+- `game_core.v` 初版已通过 Vivado XSim 仿真，testbench 能验证 reset、start、基础移动、旋转、软降、棋盘查询和无未知值输出。
+
+## 9. LED 上板调试顶层：`top_minimal_debug.v`
+
+调试目标：
+
+- 创建 `rtl/top_minimal_debug.v`，在不依赖 VGA、正式输入模块和 audio 模块的情况下，用 Nexys4 DDR 板载按钮和 LED 验证 `game_core.v` 初版能在 FPGA 上运行。
+
+遇到的问题：
+
+- 上板早期阶段需要减少外设依赖，先确认 reset、button、game_core 和 LED 输出链路。
+
+解决方法：
+
+- 将 `CLK100MHZ` 作为 `clk_100m`，`CPU_RESETN` 取反作为高有效 `rst`。
+- 对 `BTNC`、`BTNU`、`BTNL`、`BTNR` 做两级同步和上升沿检测，分别连接 start、rotate、left、right pulse。
+- 对 `BTND` 做两级同步后作为 `btn_soft_drop_hold`。
+- 使用 LED 显示 `game_state`、`cur_piece_rot`、`cur_piece_x`、`level` 和部分 `board_cell_value`。
+
+验证结果：
+
+- `top_minimal_debug.v` synthesis 通过，可作为不依赖 VGA 的游戏核心调试入口。
+
+## 10. Nexys4 DDR 约束补充
+
+调试目标：
+
+- 补充 `constraints/Nexys4DDR.xdc` 中与 `top_minimal_debug` 相关的板级引脚约束。
+
+遇到的问题：
+
+- 上板调试需要明确约束 `CLK100MHZ`、`CPU_RESETN`、按钮和 `LED[15:0]`，否则无法完成综合实现和 bitstream 生成。
+
+解决方法：
+
+- 在 XDC 中补充 Nexys4 DDR 的 `CLK100MHZ`、`CPU_RESETN`、`BTNC`、`BTNU`、`BTND`、`BTNL`、`BTNR` 和 `LED[15:0]` 约束。
+
+验证结果：
+
+- 约束补充后，`top_minimal_debug` 可进入 Vivado synthesis 和 implementation 流程。
+
+## 11. 第一次 implementation 资源超限
+
+调试目标：
+
+- 对 `top_minimal_debug` 进行 implementation，评估 `game_core.v` 初版上板资源占用。
+
+遇到的问题：
+
+- synthesis 通过，但 implementation 失败，原因是 LUT 资源超限。
+- 优化前 hierarchical utilization 显示：
+  - `top_minimal_debug Total LUTs = 113302`
+  - `game_core_inst Total LUTs = 113204`
+  - `game_core_inst` 自身内部逻辑约 `112781 LUT`
+- `collision_check`、`random_lfsr`、`score_level` 等子模块资源较小，主要资源压力来自 `game_core.v` 内部组合逻辑。
+
+解决方法：
+
+- 分析初版 `game_core.v`，定位到并行计算 left/right/down/rotate 多套碰撞、多个 board 动态读取口、800-bit `board_flat` / `board_flat_out` 大组合网络，以及一拍内完成整板清行压缩等结构。
+
+验证结果：
+
+- 确认 LUT 超限主要不是独立子模块造成，而是游戏核心内部过宽的组合数据通路造成。
+
+## 12. `game_core.v` 资源优化
+
+调试目标：
+
+- 在保持 `game_core.v` 顶层接口不变的前提下，显著降低 LUT 占用，使 `top_minimal_debug` 能通过 implementation。
+
+遇到的问题：
+
+- 初版 `game_core.v` 资源占用过高，不适合直接上板实现。
+
+解决方法：
+
+- 减少并行碰撞检查，不再同时计算 left/right/down/rotate 多套候选结果。
+- 将按钮和重力动作转换为单个 candidate，并按 4 个 block 分多拍完成碰撞检查。
+- 移除 `board_flat` / `board_flat_out` 大组合网络，不再在 `game_core.v` 内部生成 800-bit 清行组合通路。
+- 将锁定方块改为多拍顺序写入，每拍写入一个 block。
+- 将清行改为多拍顺序 FSM，逐行/逐格扫描、复制非满行、跳过满行、清空顶部剩余行，再触发一次 `score_level` 更新。
+
+验证结果：
+
+- 优化后资源显著下降：
+  - `top_minimal_debug Total LUTs = 1290`
+  - `game_core_inst Total LUTs = 1290`
+- `tb_game_core` 已根据多拍行为调整，并通过 Vivado XSim 仿真。
+
+## 13. implementation 和 bitstream
+
+调试目标：
+
+- 使用资源优化后的 `game_core.v` 重新执行 Vivado implementation 和 bitstream 生成。
+
+遇到的问题：
+
+- 优化前 LUT 超限导致 implementation 失败。
+
+解决方法：
+
+- 使用顺序化后的 `game_core.v` 重新综合、实现并生成 bitstream。
+
+验证结果：
+
+- implementation 成功，bitstream 生成成功。
+
+## 14. LED 上板现象
+
+调试目标：
+
+- 将 bitstream 下载到 Nexys4 DDR，观察按钮和 LED 是否能反映游戏核心状态变化。
+
+遇到的问题：
+
+- 当前调试顶层未接入 VGA，因此只能通过 LED 观察核心状态、位置、旋转和等级等简化信号。
+
+解决方法：
+
+- 通过 `BTNC`、`BTNL`、`BTNR`、`BTNU`、`BTND` 操作 `game_core`，观察 `LED[15:0]` 显示变化。
+
+验证结果：
+
+- 按键后 LED 状态有响应，说明 reset、button、game_core、LED 链路基本打通。
+- 该结果仅表示核心状态链路初步打通，不表示完整游戏显示和交互功能已经完成验证。
