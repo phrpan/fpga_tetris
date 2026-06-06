@@ -427,3 +427,29 @@ Line-clear rules:
 - `clear_count` is the number of removed rows.
 - `board_flat_out` keeps all non-full rows, removes full rows, shifts rows above cleared lines downward, and fills the top rows with `CELL_EMPTY`.
 - The module is pure combinational logic and has no `clk` or `rst`.
+
+### `random_lfsr.v`
+
+Function:
+
+Generate the next piece type for `game_core` using a simple 8-bit LFSR. This is an internal game-core helper module, not a VGA or IO external interface.
+
+Interface:
+
+```verilog
+module random_lfsr (
+    input  wire       clk_100m,
+    input  wire       rst,
+    input  wire       enable,
+    output reg  [2:0] piece_type
+);
+```
+
+Rules:
+
+- The module runs in the `clk_100m` clock domain and uses active-high `rst`.
+- On reset, the internal 8-bit LFSR is initialized to a nonzero seed.
+- When `enable = 1`, the LFSR advances and `piece_type` is updated.
+- `piece_type` must always be in the range `PIECE_I` through `PIECE_L`, encoded as 0 through 6.
+- The module must not output `PIECE_NONE`.
+- The mapping from LFSR state to piece type does not need to be perfectly uniform for the first playable version.
