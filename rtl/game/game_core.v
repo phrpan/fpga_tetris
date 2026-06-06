@@ -1,5 +1,3 @@
-`timescale 1ns / 1ps
-
 module game_core (
     input  wire              clk_100m,
     input  wire              rst,
@@ -25,427 +23,444 @@ module game_core (
     output wire [3:0]        level,
     output reg  [2:0]        game_state
 );
+    `include "../common/game_defs.vh"
 
-`include "../common/game_defs.vh"
+    localparam [25:0] NORMAL_FALL_TICKS = 26'd5000000;
+    localparam [25:0] SOFT_FALL_TICKS   = 26'd5;
 
-localparam NORMAL_FALL_TICKS = 26'd5000000;
-localparam SOFT_FALL_TICKS   = 26'd5;
+    localparam [3:0] PH_TITLE       = 4'd0;
+    localparam [3:0] PH_SPAWN_LOAD  = 4'd1;
+    localparam [3:0] PH_SPAWN_CHECK = 4'd2;
+    localparam [3:0] PH_PLAY        = 4'd3;
+    localparam [3:0] PH_CHECK       = 4'd4;
+    localparam [3:0] PH_LOCK        = 4'd5;
+    localparam [3:0] PH_CLEAR_SCAN  = 4'd6;
+    localparam [3:0] PH_CLEAR_COPY  = 4'd7;
+    localparam [3:0] PH_CLEAR_TOP   = 4'd8;
+    localparam [3:0] PH_SCORE       = 4'd9;
+    localparam [3:0] PH_GAME_OVER   = 4'd10;
 
-reg [3:0] board [0:19][0:9];
-reg [25:0] gravity_counter;
+    localparam [2:0] ACT_NONE   = 3'd0;
+    localparam [2:0] ACT_MOVE   = 3'd1;
+    localparam [2:0] ACT_ROTATE = 3'd2;
+    localparam [2:0] ACT_DOWN   = 3'd3;
+    localparam [2:0] ACT_SPAWN  = 3'd4;
 
-integer row;
-integer col;
-integer cell_index;
+    reg [3:0] board [0:19][0:9];
 
-wire random_enable;
-wire [2:0] random_piece_type;
+    reg [3:0] core_phase;
+    reg [25:0] gravity_counter;
 
-wire [799:0] board_flat_in;
-wire [799:0] board_flat_out;
-wire [19:0] clear_line_mask;
-wire [2:0] clear_count;
+    reg signed [4:0] candidate_x;
+    reg signed [5:0] candidate_y;
+    reg [1:0] candidate_rot;
+    reg [2:0] candidate_action;
 
-wire score_clear_event;
+    reg [1:0] check_idx;
+    reg check_collision;
 
-wire [1:0] lock_dx0;
-wire [1:0] lock_dy0;
-wire [1:0] lock_dx1;
-wire [1:0] lock_dy1;
-wire [1:0] lock_dx2;
-wire [1:0] lock_dy2;
-wire [1:0] lock_dx3;
-wire [1:0] lock_dy3;
+    reg [1:0] lock_idx;
 
-wire signed [5:0] lock_x0;
-wire signed [5:0] lock_x1;
-wire signed [5:0] lock_x2;
-wire signed [5:0] lock_x3;
-wire signed [6:0] lock_y0;
-wire signed [6:0] lock_y1;
-wire signed [6:0] lock_y2;
-wire signed [6:0] lock_y3;
+    reg [4:0] scan_row;
+    reg [3:0] scan_col;
+    reg [4:0] write_row;
+    reg [3:0] copy_col;
+    reg row_full;
+    reg [2:0] clear_count_reg;
 
-wire spawn_collision;
-wire left_collision;
-wire right_collision;
-wire rotate_collision;
-wire down_collision;
+    reg score_clear_event;
+    wire [2:0] random_piece_type;
+    wire random_enable;
 
-wire [4:0] spawn_q_row0;
-wire [3:0] spawn_q_col0;
-wire [4:0] spawn_q_row1;
-wire [3:0] spawn_q_col1;
-wire [4:0] spawn_q_row2;
-wire [3:0] spawn_q_col2;
-wire [4:0] spawn_q_row3;
-wire [3:0] spawn_q_col3;
+    wire [1:0] piece_dx;
+    wire [1:0] piece_dy;
 
-wire [4:0] left_q_row0;
-wire [3:0] left_q_col0;
-wire [4:0] left_q_row1;
-wire [3:0] left_q_col1;
-wire [4:0] left_q_row2;
-wire [3:0] left_q_col2;
-wire [4:0] left_q_row3;
-wire [3:0] left_q_col3;
+    integer row;
+    integer col;
 
-wire [4:0] right_q_row0;
-wire [3:0] right_q_col0;
-wire [4:0] right_q_row1;
-wire [3:0] right_q_col1;
-wire [4:0] right_q_row2;
-wire [3:0] right_q_col2;
-wire [4:0] right_q_row3;
-wire [3:0] right_q_col3;
+    assign random_enable = (core_phase == PH_SPAWN_LOAD);
 
-wire [4:0] rotate_q_row0;
-wire [3:0] rotate_q_col0;
-wire [4:0] rotate_q_row1;
-wire [3:0] rotate_q_col1;
-wire [4:0] rotate_q_row2;
-wire [3:0] rotate_q_col2;
-wire [4:0] rotate_q_row3;
-wire [3:0] rotate_q_col3;
+    random_lfsr random_piece_gen (
+        .clk_100m(clk_100m),
+        .rst(rst),
+        .enable(random_enable),
+        .piece_type(random_piece_type)
+    );
 
-wire [4:0] down_q_row0;
-wire [3:0] down_q_col0;
-wire [4:0] down_q_row1;
-wire [3:0] down_q_col1;
-wire [4:0] down_q_row2;
-wire [3:0] down_q_col2;
-wire [4:0] down_q_row3;
-wire [3:0] down_q_col3;
+    score_level score_level_inst (
+        .clk_100m(clk_100m),
+        .rst(rst),
+        .clear_event(score_clear_event),
+        .clear_count(clear_count_reg),
+        .score(score),
+        .lines(lines),
+        .level(level)
+    );
 
-function [3:0] piece_to_cell;
-    input [2:0] piece;
-begin
-    case (piece)
-        PIECE_I: piece_to_cell = CELL_I;
-        PIECE_O: piece_to_cell = CELL_O;
-        PIECE_T: piece_to_cell = CELL_T;
-        PIECE_S: piece_to_cell = CELL_S;
-        PIECE_Z: piece_to_cell = CELL_Z;
-        PIECE_J: piece_to_cell = CELL_J;
-        PIECE_L: piece_to_cell = CELL_L;
-        default: piece_to_cell = CELL_EMPTY;
-    endcase
-end
-endfunction
+    piece_rom active_piece_rom (
+        .piece_type(cur_piece_type),
+        .rotation(candidate_rot),
+        .block_idx((core_phase == PH_LOCK) ? lock_idx : check_idx),
+        .dx(piece_dx),
+        .dy(piece_dy)
+    );
 
-function [3:0] board_at;
-    input [4:0] query_row;
-    input [3:0] query_col;
-begin
-    if ((query_row < BOARD_ROWS) && (query_col < BOARD_COLS)) begin
-        board_at = board[query_row][query_col];
-    end else begin
-        board_at = CELL_EMPTY;
-    end
-end
-endfunction
-
-assign random_enable = (game_state == GS_SPAWN);
-assign score_clear_event = (game_state == GS_CLEAR) && (clear_count != 3'd0);
-
-random_lfsr random_piece_gen (
-    .clk_100m(clk_100m),
-    .rst(rst),
-    .enable(random_enable),
-    .piece_type(random_piece_type)
-);
-
-score_level score_level_inst (
-    .clk_100m(clk_100m),
-    .rst(rst),
-    .clear_event(score_clear_event),
-    .clear_count(clear_count),
-    .score(score),
-    .lines(lines),
-    .level(level)
-);
-
-line_clear line_clear_inst (
-    .board_flat_in(board_flat_in),
-    .board_flat_out(board_flat_out),
-    .clear_line_mask(clear_line_mask),
-    .clear_count(clear_count)
-);
-
-piece_rom lock_piece_block0 (
-    .piece_type(cur_piece_type),
-    .rotation(cur_piece_rot),
-    .block_idx(2'd0),
-    .dx(lock_dx0),
-    .dy(lock_dy0)
-);
-
-piece_rom lock_piece_block1 (
-    .piece_type(cur_piece_type),
-    .rotation(cur_piece_rot),
-    .block_idx(2'd1),
-    .dx(lock_dx1),
-    .dy(lock_dy1)
-);
-
-piece_rom lock_piece_block2 (
-    .piece_type(cur_piece_type),
-    .rotation(cur_piece_rot),
-    .block_idx(2'd2),
-    .dx(lock_dx2),
-    .dy(lock_dy2)
-);
-
-piece_rom lock_piece_block3 (
-    .piece_type(cur_piece_type),
-    .rotation(cur_piece_rot),
-    .block_idx(2'd3),
-    .dx(lock_dx3),
-    .dy(lock_dy3)
-);
-
-assign lock_x0 = {cur_piece_x[4], cur_piece_x} + {4'd0, lock_dx0};
-assign lock_x1 = {cur_piece_x[4], cur_piece_x} + {4'd0, lock_dx1};
-assign lock_x2 = {cur_piece_x[4], cur_piece_x} + {4'd0, lock_dx2};
-assign lock_x3 = {cur_piece_x[4], cur_piece_x} + {4'd0, lock_dx3};
-assign lock_y0 = {cur_piece_y[5], cur_piece_y} + {5'd0, lock_dy0};
-assign lock_y1 = {cur_piece_y[5], cur_piece_y} + {5'd0, lock_dy1};
-assign lock_y2 = {cur_piece_y[5], cur_piece_y} + {5'd0, lock_dy2};
-assign lock_y3 = {cur_piece_y[5], cur_piece_y} + {5'd0, lock_dy3};
-
-collision_check spawn_check (
-    .test_x(5'sd3),
-    .test_y(6'sd0),
-    .piece_type(next_piece_type),
-    .rotation(2'd0),
-    .q_row0(spawn_q_row0),
-    .q_col0(spawn_q_col0),
-    .q_cell0(board_at(spawn_q_row0, spawn_q_col0)),
-    .q_row1(spawn_q_row1),
-    .q_col1(spawn_q_col1),
-    .q_cell1(board_at(spawn_q_row1, spawn_q_col1)),
-    .q_row2(spawn_q_row2),
-    .q_col2(spawn_q_col2),
-    .q_cell2(board_at(spawn_q_row2, spawn_q_col2)),
-    .q_row3(spawn_q_row3),
-    .q_col3(spawn_q_col3),
-    .q_cell3(board_at(spawn_q_row3, spawn_q_col3)),
-    .collision(spawn_collision)
-);
-
-collision_check left_check (
-    .test_x(cur_piece_x - 5'sd1),
-    .test_y(cur_piece_y),
-    .piece_type(cur_piece_type),
-    .rotation(cur_piece_rot),
-    .q_row0(left_q_row0),
-    .q_col0(left_q_col0),
-    .q_cell0(board_at(left_q_row0, left_q_col0)),
-    .q_row1(left_q_row1),
-    .q_col1(left_q_col1),
-    .q_cell1(board_at(left_q_row1, left_q_col1)),
-    .q_row2(left_q_row2),
-    .q_col2(left_q_col2),
-    .q_cell2(board_at(left_q_row2, left_q_col2)),
-    .q_row3(left_q_row3),
-    .q_col3(left_q_col3),
-    .q_cell3(board_at(left_q_row3, left_q_col3)),
-    .collision(left_collision)
-);
-
-collision_check right_check (
-    .test_x(cur_piece_x + 5'sd1),
-    .test_y(cur_piece_y),
-    .piece_type(cur_piece_type),
-    .rotation(cur_piece_rot),
-    .q_row0(right_q_row0),
-    .q_col0(right_q_col0),
-    .q_cell0(board_at(right_q_row0, right_q_col0)),
-    .q_row1(right_q_row1),
-    .q_col1(right_q_col1),
-    .q_cell1(board_at(right_q_row1, right_q_col1)),
-    .q_row2(right_q_row2),
-    .q_col2(right_q_col2),
-    .q_cell2(board_at(right_q_row2, right_q_col2)),
-    .q_row3(right_q_row3),
-    .q_col3(right_q_col3),
-    .q_cell3(board_at(right_q_row3, right_q_col3)),
-    .collision(right_collision)
-);
-
-collision_check rotate_check (
-    .test_x(cur_piece_x),
-    .test_y(cur_piece_y),
-    .piece_type(cur_piece_type),
-    .rotation(cur_piece_rot + 2'd1),
-    .q_row0(rotate_q_row0),
-    .q_col0(rotate_q_col0),
-    .q_cell0(board_at(rotate_q_row0, rotate_q_col0)),
-    .q_row1(rotate_q_row1),
-    .q_col1(rotate_q_col1),
-    .q_cell1(board_at(rotate_q_row1, rotate_q_col1)),
-    .q_row2(rotate_q_row2),
-    .q_col2(rotate_q_col2),
-    .q_cell2(board_at(rotate_q_row2, rotate_q_col2)),
-    .q_row3(rotate_q_row3),
-    .q_col3(rotate_q_col3),
-    .q_cell3(board_at(rotate_q_row3, rotate_q_col3)),
-    .collision(rotate_collision)
-);
-
-collision_check down_check (
-    .test_x(cur_piece_x),
-    .test_y(cur_piece_y + 6'sd1),
-    .piece_type(cur_piece_type),
-    .rotation(cur_piece_rot),
-    .q_row0(down_q_row0),
-    .q_col0(down_q_col0),
-    .q_cell0(board_at(down_q_row0, down_q_col0)),
-    .q_row1(down_q_row1),
-    .q_col1(down_q_col1),
-    .q_cell1(board_at(down_q_row1, down_q_col1)),
-    .q_row2(down_q_row2),
-    .q_col2(down_q_col2),
-    .q_cell2(board_at(down_q_row2, down_q_col2)),
-    .q_row3(down_q_row3),
-    .q_col3(down_q_col3),
-    .q_cell3(board_at(down_q_row3, down_q_col3)),
-    .collision(down_collision)
-);
-
-genvar flat_row;
-genvar flat_col;
-generate
-    for (flat_row = 0; flat_row < BOARD_ROWS; flat_row = flat_row + 1) begin : gen_flat_row
-        for (flat_col = 0; flat_col < BOARD_COLS; flat_col = flat_col + 1) begin : gen_flat_col
-            assign board_flat_in[((flat_row * BOARD_COLS + flat_col) * 4) +: 4] =
-                board[flat_row][flat_col];
+    function [3:0] piece_to_cell;
+        input [2:0] piece;
+        begin
+            case (piece)
+                PIECE_I: piece_to_cell = CELL_I;
+                PIECE_O: piece_to_cell = CELL_O;
+                PIECE_T: piece_to_cell = CELL_T;
+                PIECE_S: piece_to_cell = CELL_S;
+                PIECE_Z: piece_to_cell = CELL_Z;
+                PIECE_J: piece_to_cell = CELL_J;
+                PIECE_L: piece_to_cell = CELL_L;
+                default: piece_to_cell = CELL_EMPTY;
+            endcase
         end
-    end
-endgenerate
+    endfunction
 
-always @* begin
-    if ((board_query_row < BOARD_ROWS) && (board_query_col < BOARD_COLS)) begin
-        board_cell_value = board[board_query_row][board_query_col];
-    end else begin
-        board_cell_value = CELL_EMPTY;
-    end
-end
-
-always @(posedge clk_100m) begin
-    if (rst) begin
-        for (row = 0; row < BOARD_ROWS; row = row + 1) begin
-            for (col = 0; col < BOARD_COLS; col = col + 1) begin
-                board[row][col] <= CELL_EMPTY;
+    function [3:0] board_cell;
+        input [4:0] q_row;
+        input [3:0] q_col;
+        begin
+            if ((q_row < BOARD_ROWS) && (q_col < BOARD_COLS)) begin
+                board_cell = board[q_row][q_col];
+            end else begin
+                board_cell = CELL_EMPTY;
             end
         end
+    endfunction
 
-        game_state <= GS_TITLE;
-        cur_piece_type <= PIECE_T;
-        next_piece_type <= PIECE_T;
-        cur_piece_x <= 5'sd3;
-        cur_piece_y <= 6'sd0;
-        cur_piece_rot <= 2'd0;
-        gravity_counter <= 26'd0;
-    end else begin
-        case (game_state)
-            GS_TITLE: begin
-                gravity_counter <= 26'd0;
-                if (btn_start_pulse) begin
-                    for (row = 0; row < BOARD_ROWS; row = row + 1) begin
-                        for (col = 0; col < BOARD_COLS; col = col + 1) begin
-                            board[row][col] <= CELL_EMPTY;
-                        end
-                    end
-                    game_state <= GS_SPAWN;
+    wire signed [5:0] piece_dx_signed;
+    wire signed [6:0] piece_dy_signed;
+    wire signed [5:0] candidate_x_ext;
+    wire signed [6:0] candidate_y_ext;
+    wire signed [5:0] cur_piece_x_ext;
+    wire signed [6:0] cur_piece_y_ext;
+    wire signed [5:0] block_x_signed;
+    wire signed [6:0] block_y_signed;
+    wire signed [5:0] lock_x_signed;
+    wire signed [6:0] lock_y_signed;
+    wire [4:0] block_row;
+    wire [3:0] block_col;
+    wire [4:0] lock_row;
+    wire [3:0] lock_col;
+
+    assign piece_dx_signed = {4'b0000, piece_dx};
+    assign piece_dy_signed = {5'b00000, piece_dy};
+    assign candidate_x_ext = candidate_x;
+    assign candidate_y_ext = candidate_y;
+    assign cur_piece_x_ext = cur_piece_x;
+    assign cur_piece_y_ext = cur_piece_y;
+    assign block_x_signed = candidate_x_ext + piece_dx_signed;
+    assign block_y_signed = candidate_y_ext + piece_dy_signed;
+    assign lock_x_signed = cur_piece_x_ext + piece_dx_signed;
+    assign lock_y_signed = cur_piece_y_ext + piece_dy_signed;
+    assign block_row = block_y_signed[4:0];
+    assign block_col = block_x_signed[3:0];
+    assign lock_row = lock_y_signed[4:0];
+    assign lock_col = lock_x_signed[3:0];
+
+    always @* begin
+        board_cell_value = board_cell(board_query_row, board_query_col);
+    end
+
+    always @(posedge clk_100m) begin
+        if (rst) begin
+            for (row = 0; row < BOARD_ROWS; row = row + 1) begin
+                for (col = 0; col < BOARD_COLS; col = col + 1) begin
+                    board[row][col] <= CELL_EMPTY;
                 end
             end
 
-            GS_SPAWN: begin
-                cur_piece_type <= next_piece_type;
-                next_piece_type <= random_piece_type;
-                cur_piece_x <= 5'sd3;
-                cur_piece_y <= 6'sd0;
-                cur_piece_rot <= 2'd0;
-                gravity_counter <= 26'd0;
+            core_phase <= PH_TITLE;
+            game_state <= GS_TITLE;
+            cur_piece_type <= PIECE_T;
+            cur_piece_rot <= 2'd0;
+            cur_piece_x <= 5'sd3;
+            cur_piece_y <= 6'sd0;
+            next_piece_type <= PIECE_T;
+            gravity_counter <= 26'd0;
 
-                if (spawn_collision) begin
-                    game_state <= GS_GAME_OVER;
-                end else begin
-                    game_state <= GS_PLAY;
-                end
-            end
+            candidate_x <= 5'sd3;
+            candidate_y <= 6'sd0;
+            candidate_rot <= 2'd0;
+            candidate_action <= ACT_NONE;
+            check_idx <= 2'd0;
+            check_collision <= 1'b0;
+            lock_idx <= 2'd0;
 
-            GS_PLAY: begin
-                if (btn_left_pulse && !left_collision) begin
-                    cur_piece_x <= cur_piece_x - 5'sd1;
-                end else if (btn_right_pulse && !right_collision) begin
-                    cur_piece_x <= cur_piece_x + 5'sd1;
-                end
+            scan_row <= 5'd19;
+            scan_col <= 4'd0;
+            write_row <= 5'd19;
+            copy_col <= 4'd0;
+            row_full <= 1'b1;
+            clear_count_reg <= 3'd0;
+            score_clear_event <= 1'b0;
+        end else begin
+            score_clear_event <= 1'b0;
 
-                if (btn_rotate_pulse && !rotate_collision) begin
-                    cur_piece_rot <= cur_piece_rot + 2'd1;
-                end
-
-                if (gravity_counter >= (btn_soft_drop_hold ? SOFT_FALL_TICKS : NORMAL_FALL_TICKS)) begin
+            case (core_phase)
+                PH_TITLE: begin
+                    game_state <= GS_TITLE;
                     gravity_counter <= 26'd0;
-                    if (!down_collision) begin
-                        cur_piece_y <= cur_piece_y + 6'sd1;
-                    end else begin
-                        game_state <= GS_LOCK;
-                    end
-                end else begin
-                    gravity_counter <= gravity_counter + 26'd1;
-                end
-            end
-
-            GS_LOCK: begin
-                if ((lock_y0 >= 0) && (lock_y0 < BOARD_ROWS) &&
-                    (lock_x0 >= 0) && (lock_x0 < BOARD_COLS)) begin
-                    board[lock_y0[4:0]][lock_x0[3:0]] <= piece_to_cell(cur_piece_type);
-                end
-                if ((lock_y1 >= 0) && (lock_y1 < BOARD_ROWS) &&
-                    (lock_x1 >= 0) && (lock_x1 < BOARD_COLS)) begin
-                    board[lock_y1[4:0]][lock_x1[3:0]] <= piece_to_cell(cur_piece_type);
-                end
-                if ((lock_y2 >= 0) && (lock_y2 < BOARD_ROWS) &&
-                    (lock_x2 >= 0) && (lock_x2 < BOARD_COLS)) begin
-                    board[lock_y2[4:0]][lock_x2[3:0]] <= piece_to_cell(cur_piece_type);
-                end
-                if ((lock_y3 >= 0) && (lock_y3 < BOARD_ROWS) &&
-                    (lock_x3 >= 0) && (lock_x3 < BOARD_COLS)) begin
-                    board[lock_y3[4:0]][lock_x3[3:0]] <= piece_to_cell(cur_piece_type);
-                end
-                game_state <= GS_CLEAR;
-            end
-
-            GS_CLEAR: begin
-                for (row = 0; row < BOARD_ROWS; row = row + 1) begin
-                    for (col = 0; col < BOARD_COLS; col = col + 1) begin
-                        cell_index = row * BOARD_COLS + col;
-                        board[row][col] <= board_flat_out[cell_index*4 +: 4];
-                    end
-                end
-                game_state <= GS_SPAWN;
-            end
-
-            GS_GAME_OVER: begin
-                gravity_counter <= 26'd0;
-                if (btn_start_pulse) begin
-                    for (row = 0; row < BOARD_ROWS; row = row + 1) begin
-                        for (col = 0; col < BOARD_COLS; col = col + 1) begin
-                            board[row][col] <= CELL_EMPTY;
+                    if (btn_start_pulse) begin
+                        for (row = 0; row < BOARD_ROWS; row = row + 1) begin
+                            for (col = 0; col < BOARD_COLS; col = col + 1) begin
+                                board[row][col] <= CELL_EMPTY;
+                            end
                         end
+                        core_phase <= PH_SPAWN_LOAD;
+                        game_state <= GS_SPAWN;
                     end
+                end
+
+                PH_SPAWN_LOAD: begin
+                    game_state <= GS_SPAWN;
+                    cur_piece_type <= next_piece_type;
+                    next_piece_type <= random_piece_type;
+                    cur_piece_rot <= 2'd0;
+                    cur_piece_x <= 5'sd3;
+                    cur_piece_y <= 6'sd0;
+                    candidate_x <= 5'sd3;
+                    candidate_y <= 6'sd0;
+                    candidate_rot <= 2'd0;
+                    candidate_action <= ACT_SPAWN;
+                    check_idx <= 2'd0;
+                    check_collision <= 1'b0;
+                    gravity_counter <= 26'd0;
+                    core_phase <= PH_SPAWN_CHECK;
+                end
+
+                PH_SPAWN_CHECK: begin
+                    game_state <= GS_SPAWN;
+                    if ((block_x_signed < 0) ||
+                        (block_x_signed >= BOARD_COLS) ||
+                        (block_y_signed >= BOARD_ROWS) ||
+                        ((block_y_signed >= 0) && (board_cell(block_row, block_col) != CELL_EMPTY))) begin
+                        check_collision <= 1'b1;
+                    end
+
+                    if (check_idx == 2'd3) begin
+                        if (check_collision ||
+                            (block_x_signed < 0) ||
+                            (block_x_signed >= BOARD_COLS) ||
+                            (block_y_signed >= BOARD_ROWS) ||
+                            ((block_y_signed >= 0) && (board_cell(block_row, block_col) != CELL_EMPTY))) begin
+                            core_phase <= PH_GAME_OVER;
+                            game_state <= GS_GAME_OVER;
+                        end else begin
+                            core_phase <= PH_PLAY;
+                            game_state <= GS_PLAY;
+                        end
+                    end else begin
+                        check_idx <= check_idx + 1'b1;
+                    end
+                end
+
+                PH_PLAY: begin
+                    game_state <= GS_PLAY;
+
+                    if (btn_left_pulse) begin
+                        candidate_x <= cur_piece_x - 1'b1;
+                        candidate_y <= cur_piece_y;
+                        candidate_rot <= cur_piece_rot;
+                        candidate_action <= ACT_MOVE;
+                        check_idx <= 2'd0;
+                        check_collision <= 1'b0;
+                        core_phase <= PH_CHECK;
+                    end else if (btn_right_pulse) begin
+                        candidate_x <= cur_piece_x + 1'b1;
+                        candidate_y <= cur_piece_y;
+                        candidate_rot <= cur_piece_rot;
+                        candidate_action <= ACT_MOVE;
+                        check_idx <= 2'd0;
+                        check_collision <= 1'b0;
+                        core_phase <= PH_CHECK;
+                    end else if (btn_rotate_pulse) begin
+                        candidate_x <= cur_piece_x;
+                        candidate_y <= cur_piece_y;
+                        candidate_rot <= cur_piece_rot + 1'b1;
+                        candidate_action <= ACT_ROTATE;
+                        check_idx <= 2'd0;
+                        check_collision <= 1'b0;
+                        core_phase <= PH_CHECK;
+                    end else if (gravity_counter >= (btn_soft_drop_hold ? SOFT_FALL_TICKS : NORMAL_FALL_TICKS)) begin
+                        candidate_x <= cur_piece_x;
+                        candidate_y <= cur_piece_y + 1'b1;
+                        candidate_rot <= cur_piece_rot;
+                        candidate_action <= ACT_DOWN;
+                        check_idx <= 2'd0;
+                        check_collision <= 1'b0;
+                        gravity_counter <= 26'd0;
+                        core_phase <= PH_CHECK;
+                    end else begin
+                        gravity_counter <= gravity_counter + 1'b1;
+                    end
+                end
+
+                PH_CHECK: begin
+                    game_state <= GS_PLAY;
+                    if ((block_x_signed < 0) ||
+                        (block_x_signed >= BOARD_COLS) ||
+                        (block_y_signed >= BOARD_ROWS) ||
+                        ((block_y_signed >= 0) && (board_cell(block_row, block_col) != CELL_EMPTY))) begin
+                        check_collision <= 1'b1;
+                    end
+
+                    if (check_idx == 2'd3) begin
+                        if (check_collision ||
+                            (block_x_signed < 0) ||
+                            (block_x_signed >= BOARD_COLS) ||
+                            (block_y_signed >= BOARD_ROWS) ||
+                            ((block_y_signed >= 0) && (board_cell(block_row, block_col) != CELL_EMPTY))) begin
+                            if (candidate_action == ACT_DOWN) begin
+                                lock_idx <= 2'd0;
+                                candidate_rot <= cur_piece_rot;
+                                core_phase <= PH_LOCK;
+                                game_state <= GS_LOCK;
+                            end else begin
+                                core_phase <= PH_PLAY;
+                            end
+                        end else begin
+                            cur_piece_x <= candidate_x;
+                            cur_piece_y <= candidate_y;
+                            cur_piece_rot <= candidate_rot;
+                            core_phase <= PH_PLAY;
+                        end
+                    end else begin
+                        check_idx <= check_idx + 1'b1;
+                    end
+                end
+
+                PH_LOCK: begin
+                    game_state <= GS_LOCK;
+                    candidate_x <= cur_piece_x;
+                    candidate_y <= cur_piece_y;
+                    candidate_rot <= cur_piece_rot;
+
+                    if ((lock_y_signed >= 0) &&
+                        (lock_y_signed < BOARD_ROWS) &&
+                        (lock_x_signed >= 0) &&
+                        (lock_x_signed < BOARD_COLS)) begin
+                        board[lock_row][lock_col] <= piece_to_cell(cur_piece_type);
+                    end
+
+                    if (lock_idx == 2'd3) begin
+                        scan_row <= 5'd19;
+                        scan_col <= 4'd0;
+                        write_row <= 5'd19;
+                        copy_col <= 4'd0;
+                        row_full <= 1'b1;
+                        clear_count_reg <= 3'd0;
+                        core_phase <= PH_CLEAR_SCAN;
+                        game_state <= GS_CLEAR;
+                    end else begin
+                        lock_idx <= lock_idx + 1'b1;
+                    end
+                end
+
+                PH_CLEAR_SCAN: begin
+                    game_state <= GS_CLEAR;
+
+                    if (board[scan_row][scan_col] == CELL_EMPTY) begin
+                        row_full <= 1'b0;
+                    end
+
+                    if (scan_col == (BOARD_COLS - 1)) begin
+                        copy_col <= 4'd0;
+                        if (row_full && (board[scan_row][scan_col] != CELL_EMPTY)) begin
+                            clear_count_reg <= clear_count_reg + 1'b1;
+                            if (scan_row == 5'd0) begin
+                                copy_col <= 4'd0;
+                                core_phase <= PH_CLEAR_TOP;
+                            end else begin
+                                scan_row <= scan_row - 1'b1;
+                                scan_col <= 4'd0;
+                                row_full <= 1'b1;
+                            end
+                        end else begin
+                            core_phase <= PH_CLEAR_COPY;
+                        end
+                    end else begin
+                        scan_col <= scan_col + 1'b1;
+                    end
+                end
+
+                PH_CLEAR_COPY: begin
+                    game_state <= GS_CLEAR;
+                    board[write_row][copy_col] <= board[scan_row][copy_col];
+
+                    if (copy_col == (BOARD_COLS - 1)) begin
+                        if (write_row != 5'd0) begin
+                            write_row <= write_row - 1'b1;
+                        end
+
+                        if (scan_row == 5'd0) begin
+                            copy_col <= 4'd0;
+                            if (write_row == 5'd0) begin
+                                core_phase <= PH_SCORE;
+                            end else begin
+                                write_row <= write_row - 1'b1;
+                                core_phase <= PH_CLEAR_TOP;
+                            end
+                        end else begin
+                            scan_row <= scan_row - 1'b1;
+                            scan_col <= 4'd0;
+                            copy_col <= 4'd0;
+                            row_full <= 1'b1;
+                            core_phase <= PH_CLEAR_SCAN;
+                        end
+                    end else begin
+                        copy_col <= copy_col + 1'b1;
+                    end
+                end
+
+                PH_CLEAR_TOP: begin
+                    game_state <= GS_CLEAR;
+                    board[write_row][copy_col] <= CELL_EMPTY;
+
+                    if (copy_col == (BOARD_COLS - 1)) begin
+                        if (write_row == 5'd0) begin
+                            core_phase <= PH_SCORE;
+                        end else begin
+                            write_row <= write_row - 1'b1;
+                            copy_col <= 4'd0;
+                        end
+                    end else begin
+                        copy_col <= copy_col + 1'b1;
+                    end
+                end
+
+                PH_SCORE: begin
+                    game_state <= GS_CLEAR;
+                    if (clear_count_reg != 3'd0) begin
+                        score_clear_event <= 1'b1;
+                    end
+                    core_phase <= PH_SPAWN_LOAD;
                     game_state <= GS_SPAWN;
                 end
-            end
 
-            default: begin
-                game_state <= GS_TITLE;
-            end
-        endcase
+                PH_GAME_OVER: begin
+                    game_state <= GS_GAME_OVER;
+                    if (btn_start_pulse) begin
+                        for (row = 0; row < BOARD_ROWS; row = row + 1) begin
+                            for (col = 0; col < BOARD_COLS; col = col + 1) begin
+                                board[row][col] <= CELL_EMPTY;
+                            end
+                        end
+                        core_phase <= PH_SPAWN_LOAD;
+                        game_state <= GS_SPAWN;
+                    end
+                end
+
+                default: begin
+                    core_phase <= PH_TITLE;
+                    game_state <= GS_TITLE;
+                end
+            endcase
+        end
     end
-end
-
 endmodule

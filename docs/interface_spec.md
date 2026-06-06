@@ -342,6 +342,34 @@ Early integration module. It only needs to implement title start, fixed T piece,
 
 ## 8. Internal Game Module Interfaces
 
+### `game_core.v` Resource-Optimized Initial Core
+
+`game_core.v` keeps the documented top-level interface unchanged. The
+resource-optimized implementation uses a small internal phase FSM under the
+public `game_state` output so the VGA/IO-facing state values remain
+`GS_TITLE`, `GS_SPAWN`, `GS_PLAY`, `GS_LOCK`, `GS_CLEAR`, and `GS_GAME_OVER`.
+
+The optimized core checks only one candidate action at a time. In `GS_PLAY`,
+button and gravity actions are converted into a single candidate
+`candidate_x/candidate_y/candidate_rot` value, then checked over four cycles,
+one block per cycle. This removes the earlier parallel left/right/down/rotate
+collision networks and reduces repeated dynamic board reads.
+
+The lock and clear paths are multi-cycle:
+
+- `GS_LOCK` writes the four current-piece blocks into the board one block per
+  clock using `CELL_I` through `CELL_L`.
+- `GS_CLEAR` scans rows from bottom to top, checks cells one at a time, copies
+  non-full rows down one cell per clock, skips full rows, clears the remaining
+  top rows one cell per clock, and then emits one score update event if any
+  rows were cleared.
+
+This version intentionally does not generate `board_flat` / `board_flat_out`
+wide combinational buses inside `game_core.v`, and it does not perform
+board-wide compression in a single combinational step. It still does not
+support hold, ghost, hard drop, pause, clear animation, audio pulse, or wall
+kick.
+
 This section documents helper modules used inside `game_core`. These are internal game-core datapath interfaces, not VGA or IO external interfaces.
 
 ### `collision_check.v`
