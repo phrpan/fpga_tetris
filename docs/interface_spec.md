@@ -339,3 +339,58 @@ module game_core_minimal (
 Function:
 
 Early integration module. It only needs to implement title start, fixed T piece, left/right movement, and rotation.
+
+## 8. Internal Game Module Interfaces
+
+This section documents helper modules used inside `game_core`. These are internal game-core datapath interfaces, not VGA or IO external interfaces.
+
+### `collision_check.v`
+
+Function:
+
+Check whether a candidate piece placement collides with the board boundary or with existing locked board cells. The module expands the 4 blocks of the piece by instantiating four `piece_rom` modules, then produces up to four board query addresses and a combinational `collision` result.
+
+Interface:
+
+```verilog
+module collision_check (
+    input  wire signed [4:0] test_x,
+    input  wire signed [5:0] test_y,
+    input  wire [2:0]        piece_type,
+    input  wire [1:0]        rotation,
+
+    output reg  [4:0]        q_row0,
+    output reg  [3:0]        q_col0,
+    input  wire [3:0]        q_cell0,
+
+    output reg  [4:0]        q_row1,
+    output reg  [3:0]        q_col1,
+    input  wire [3:0]        q_cell1,
+
+    output reg  [4:0]        q_row2,
+    output reg  [3:0]        q_col2,
+    input  wire [3:0]        q_cell2,
+
+    output reg  [4:0]        q_row3,
+    output reg  [3:0]        q_col3,
+    input  wire [3:0]        q_cell3,
+
+    output reg               collision
+);
+```
+
+Coordinate rules:
+
+- `test_x` and `test_y` are the top-left corner of the 4x4 local piece box being tested.
+- For each local block, `block_x = test_x + dx` and `block_y = test_y + dy`.
+- The module queries board cells only for blocks with `block_y >= 0`.
+- For blocks with `block_y < 0`, the corresponding `q_row` and `q_col` may be `0`, and the block does not collide merely because it is above the board.
+
+Collision rules:
+
+- `block_x < 0` causes collision.
+- `block_x >= BOARD_COLS` causes collision.
+- `block_y >= BOARD_ROWS` causes collision.
+- `block_y < 0` does not cause collision and does not require a board-cell query.
+- When `block_y >= 0`, any corresponding queried `q_cell` not equal to `CELL_EMPTY` causes collision.
+- If no block violates these rules, `collision = 0`.
