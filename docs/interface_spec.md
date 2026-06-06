@@ -494,3 +494,62 @@ Scoring rules:
 - 2 cleared lines: `300 * level`
 - 3 cleared lines: `500 * level`
 - 4 cleared lines: `800 * level`
+
+### `game_core.v` Initial Integrated Version
+
+Function:
+
+Integrate the verified game-core helper modules into a playable baseline state machine. This module owns the board state, applies input actions, controls spawning, gravity, locking, line clearing, score/line/level updates, and exposes the board query interface used by VGA.
+
+Interface:
+
+```verilog
+module game_core (
+    input  wire              clk_100m,
+    input  wire              rst,
+
+    input  wire              btn_left_pulse,
+    input  wire              btn_right_pulse,
+    input  wire              btn_rotate_pulse,
+    input  wire              btn_soft_drop_hold,
+    input  wire              btn_start_pulse,
+
+    input  wire [4:0]        board_query_row,
+    input  wire [3:0]        board_query_col,
+    output reg  [3:0]        board_cell_value,
+
+    output reg  [2:0]        cur_piece_type,
+    output reg  [1:0]        cur_piece_rot,
+    output reg signed [4:0]  cur_piece_x,
+    output reg signed [5:0]  cur_piece_y,
+
+    output reg  [2:0]        next_piece_type,
+    output wire [15:0]       score,
+    output wire [7:0]        lines,
+    output wire [3:0]        level,
+    output reg  [2:0]        game_state
+);
+```
+
+Initial behavior:
+
+- On `rst`, clear the board, set `game_state = GS_TITLE`, use a fixed legal current piece, set `cur_piece_x = 3`, `cur_piece_y = 0`, and `cur_piece_rot = 0`.
+- In `GS_TITLE`, `btn_start_pulse` clears the board and moves to `GS_SPAWN`.
+- In `GS_SPAWN`, load `cur_piece_type` from `next_piece_type`, generate a new legal `next_piece_type`, reset piece position and rotation, check spawn collision, then enter `GS_PLAY` or `GS_GAME_OVER`.
+- In `GS_PLAY`, left, right, and rotate pulses are accepted only when the corresponding candidate placement does not collide.
+- In `GS_PLAY`, gravity periodically tests `y + 1`; if valid, the piece falls, otherwise the state moves to `GS_LOCK`.
+- `btn_soft_drop_hold` uses a faster gravity interval.
+- In `GS_LOCK`, the 4 current piece blocks are written into the board using `CELL_I` through `CELL_L` encodings, not raw `piece_type`.
+- In `GS_CLEAR`, `line_clear` compacts the board and `score_level` updates once if at least one line was cleared, then the state returns to `GS_SPAWN`.
+- In `GS_GAME_OVER`, `btn_start_pulse` clears the board and restarts at `GS_SPAWN`.
+- `board_query_row` and `board_query_col` read the internal board; invalid coordinates return `CELL_EMPTY`.
+
+Initial limitations:
+
+- This version does not support Hold.
+- This version does not support Ghost display.
+- This version does not support hard drop.
+- This version does not support pause.
+- This version does not support clear animation.
+- This version does not generate audio event pulses.
+- This version does not implement wall kick.
