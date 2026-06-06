@@ -394,3 +394,36 @@ Collision rules:
 - `block_y < 0` does not cause collision and does not require a board-cell query.
 - When `block_y >= 0`, any corresponding queried `q_cell` not equal to `CELL_EMPTY` causes collision.
 - If no block violates these rules, `collision = 0`.
+
+### `line_clear.v`
+
+Function:
+
+Check a full board image for completed lines and produce the compressed board after line removal. This is a combinational helper module for `game_core` internal board update logic. It is not a VGA or IO external interface.
+
+Interface:
+
+```verilog
+module line_clear (
+    input  wire [799:0] board_flat_in,
+    output reg  [799:0] board_flat_out,
+    output reg  [19:0]  clear_line_mask,
+    output reg  [2:0]   clear_count
+);
+```
+
+Flattened board rules:
+
+- The board is flattened as 20 rows x 10 columns x 4 bits per cell, for 800 bits total.
+- `cell_index = row * BOARD_COLS + col`.
+- The corresponding bit range is `cell_index*4 +: 4`.
+- `row = 0` is the top row and `row = 19` is the bottom row.
+- `col = 0` is the left column and `col = 9` is the right column.
+
+Line-clear rules:
+
+- A row is full when all 10 cells are not `CELL_EMPTY`.
+- `clear_line_mask[row] = 1` marks a row that is removed.
+- `clear_count` is the number of removed rows.
+- `board_flat_out` keeps all non-full rows, removes full rows, shifts rows above cleared lines downward, and fills the top rows with `CELL_EMPTY`.
+- The module is pure combinational logic and has no `clk` or `rst`.
