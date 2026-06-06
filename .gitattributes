@@ -1,0 +1,21 @@
+# Normalize text files in repository
+* text=auto
+
+# Keep source files as text
+*.v   text
+*.vh  text
+*.sv  text
+*.xdc text
+*.tcl text
+*.md  text
+*.txt text
+
+# Treat generated/binary files as binary
+*.bit binary
+*.bin binary
+*.dcp binary
+*.wdb binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary

@@ -1,0 +1,25 @@
+# Vivado project folder, ignored for now
+vivado/
+
+# Vivado generated files
+*.jou
+*.log
+*.str
+*.wdb
+*.vcd
+*.pb
+*.dcp
+*.bit
+*.bin
+*.ltx
+*.rpt
+*.xml
+*.html
+
+# Windows/editor
+.DS_Store
+Thumbs.db
+.vscode/
+# Local backup of old Git history
+.git_backup_before_github/
+
