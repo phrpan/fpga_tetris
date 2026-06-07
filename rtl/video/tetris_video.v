@@ -32,6 +32,35 @@ module tetris_video (
     localparam BOARD_X0  = 220;
     localparam BOARD_Y0  = 40;
 
+    localparam BOARD_W = BOARD_COLS * CELL_SIZE;
+    localparam BOARD_H = BOARD_ROWS * CELL_SIZE;
+
+    // Simple UI layout
+    localparam TITLE_X0 = 0;
+    localparam TITLE_Y0 = 0;
+    localparam TITLE_X1 = 640;
+    localparam TITLE_Y1 = 36;
+
+    localparam NEXT_X0 = 40;
+    localparam NEXT_Y0 = 80;
+    localparam NEXT_W  = 130;
+    localparam NEXT_H  = 130;
+
+    localparam INFO_X0 = 455;
+    localparam INFO_Y0 = 80;
+    localparam INFO_W  = 145;
+    localparam INFO_H  = 230;
+
+    localparam HELP_X0 = 40;
+    localparam HELP_Y0 = 455;
+    localparam HELP_W  = 560;
+    localparam HELP_H  = 18;
+
+    localparam GAMEOVER_X0 = 170;
+    localparam GAMEOVER_Y0 = 170;
+    localparam GAMEOVER_W  = 300;
+    localparam GAMEOVER_H  = 130;
+
     wire video_on;
     wire [9:0] pixel_x;
     wire [9:0] pixel_y;
@@ -46,13 +75,16 @@ module tetris_video (
         .pixel_y  (pixel_y)
     );
 
+    // ------------------------------------------------------------
+    // Board area
+    // ------------------------------------------------------------
     wire in_board_area;
 
     assign in_board_area =
         (pixel_x >= BOARD_X0) &&
-        (pixel_x <  BOARD_X0 + BOARD_COLS * CELL_SIZE) &&
+        (pixel_x <  BOARD_X0 + BOARD_W) &&
         (pixel_y >= BOARD_Y0) &&
-        (pixel_y <  BOARD_Y0 + BOARD_ROWS * CELL_SIZE);
+        (pixel_y <  BOARD_Y0 + BOARD_H);
 
     wire [9:0] board_local_x;
     wire [9:0] board_local_y;
@@ -80,6 +112,133 @@ module tetris_video (
             (board_local_y % CELL_SIZE == CELL_SIZE - 1)
         );
 
+    wire board_border;
+
+    assign board_border =
+        (
+            (pixel_x >= BOARD_X0 - 3) &&
+            (pixel_x <  BOARD_X0 + BOARD_W + 3) &&
+            (pixel_y >= BOARD_Y0 - 3) &&
+            (pixel_y <  BOARD_Y0 + BOARD_H + 3)
+        ) &&
+        !in_board_area;
+
+    // ------------------------------------------------------------
+    // UI regions
+    // ------------------------------------------------------------
+    wire in_title_bar;
+    wire in_next_box;
+    wire in_info_box;
+    wire in_help_bar;
+    wire in_gameover_panel;
+
+    assign in_title_bar =
+        (pixel_x >= TITLE_X0) &&
+        (pixel_x <  TITLE_X1) &&
+        (pixel_y >= TITLE_Y0) &&
+        (pixel_y <  TITLE_Y1);
+
+    assign in_next_box =
+        (pixel_x >= NEXT_X0) &&
+        (pixel_x <  NEXT_X0 + NEXT_W) &&
+        (pixel_y >= NEXT_Y0) &&
+        (pixel_y <  NEXT_Y0 + NEXT_H);
+
+    assign in_info_box =
+        (pixel_x >= INFO_X0) &&
+        (pixel_x <  INFO_X0 + INFO_W) &&
+        (pixel_y >= INFO_Y0) &&
+        (pixel_y <  INFO_Y0 + INFO_H);
+
+    assign in_help_bar =
+        (pixel_x >= HELP_X0) &&
+        (pixel_x <  HELP_X0 + HELP_W) &&
+        (pixel_y >= HELP_Y0) &&
+        (pixel_y <  HELP_Y0 + HELP_H);
+
+    assign in_gameover_panel =
+        (pixel_x >= GAMEOVER_X0) &&
+        (pixel_x <  GAMEOVER_X0 + GAMEOVER_W) &&
+        (pixel_y >= GAMEOVER_Y0) &&
+        (pixel_y <  GAMEOVER_Y0 + GAMEOVER_H);
+
+    wire next_box_border;
+    wire info_box_border;
+    wire help_bar_border;
+    wire gameover_border;
+
+    assign next_box_border =
+        in_next_box &&
+        (
+            (pixel_x == NEXT_X0) ||
+            (pixel_x == NEXT_X0 + NEXT_W - 1) ||
+            (pixel_y == NEXT_Y0) ||
+            (pixel_y == NEXT_Y0 + NEXT_H - 1)
+        );
+
+    assign info_box_border =
+        in_info_box &&
+        (
+            (pixel_x == INFO_X0) ||
+            (pixel_x == INFO_X0 + INFO_W - 1) ||
+            (pixel_y == INFO_Y0) ||
+            (pixel_y == INFO_Y0 + INFO_H - 1)
+        );
+
+    assign help_bar_border =
+        in_help_bar &&
+        (
+            (pixel_x == HELP_X0) ||
+            (pixel_x == HELP_X0 + HELP_W - 1) ||
+            (pixel_y == HELP_Y0) ||
+            (pixel_y == HELP_Y0 + HELP_H - 1)
+        );
+
+    assign gameover_border =
+        in_gameover_panel &&
+        (
+            (pixel_x == GAMEOVER_X0) ||
+            (pixel_x == GAMEOVER_X0 + GAMEOVER_W - 1) ||
+            (pixel_y == GAMEOVER_Y0) ||
+            (pixel_y == GAMEOVER_Y0 + GAMEOVER_H - 1)
+        );
+
+    // right info box separators: score / level / lines regions
+    wire info_sep_line;
+
+    assign info_sep_line =
+        in_info_box &&
+        (
+            (pixel_y == INFO_Y0 + 70) ||
+            (pixel_y == INFO_Y0 + 140)
+        );
+
+    // Decorative colored bars to show score / level / lines areas
+    wire score_bar;
+    wire level_bar;
+    wire lines_bar;
+
+    assign score_bar =
+        (pixel_x >= INFO_X0 + 15) &&
+        (pixel_x <  INFO_X0 + 15 + score[7:0]) &&
+        (pixel_y >= INFO_Y0 + 35) &&
+        (pixel_y <  INFO_Y0 + 45);
+
+    assign level_bar =
+        (pixel_x >= INFO_X0 + 15) &&
+        (pixel_x <  INFO_X0 + 15 + {level, 3'b000}) &&
+        (pixel_y >= INFO_Y0 + 105) &&
+        (pixel_y <  INFO_Y0 + 115);
+
+    assign lines_bar =
+        (pixel_x >= INFO_X0 + 15) &&
+        (pixel_x <  INFO_X0 + 15 + lines) &&
+        (pixel_y >= INFO_Y0 + 175) &&
+        (pixel_y <  INFO_Y0 + 185);
+
+    // ------------------------------------------------------------
+    // Current active piece
+    // ------------------------------------------------------------
     wire [1:0] dx0;
     wire [1:0] dy0;
     wire [1:0] dx1;
@@ -162,8 +321,93 @@ module tetris_video (
             (game_state == GS_LOCK)
         );
 
+    // ------------------------------------------------------------
+    // Next piece preview, simple version
+    // ------------------------------------------------------------
+    localparam NEXT_CELL = 16;
+    localparam NEXT_PX0  = 72;
+    localparam NEXT_PY0  = 118;
+
+    wire [1:0] ndx0;
+    wire [1:0] ndy0;
+    wire [1:0] ndx1;
+    wire [1:0] ndy1;
+    wire [1:0] ndx2;
+    wire [1:0] ndy2;
+    wire [1:0] ndx3;
+    wire [1:0] ndy3;
+
+    piece_rom next0 (
+        .piece_type (next_piece_type),
+        .rotation   (2'd0),
+        .block_idx  (2'd0),
+        .dx         (ndx0),
+        .dy         (ndy0)
+    );
+
+    piece_rom next1 (
+        .piece_type (next_piece_type),
+        .rotation   (2'd0),
+        .block_idx  (2'd1),
+        .dx         (ndx1),
+        .dy         (ndy1)
+    );
+
+    piece_rom next2 (
+        .piece_type (next_piece_type),
+        .rotation   (2'd0),
+        .block_idx  (2'd2),
+        .dx         (ndx2),
+        .dy         (ndy2)
+    );
+
+    piece_rom next3 (
+        .piece_type (next_piece_type),
+        .rotation   (2'd0),
+        .block_idx  (2'd3),
+        .dx         (ndx3),
+        .dy         (ndy3)
+    );
+
+    wire next0_on;
+    wire next1_on;
+    wire next2_on;
+    wire next3_on;
+
+    assign next0_on =
+        (pixel_x >= NEXT_PX0 + ndx0 * NEXT_CELL) &&
+        (pixel_x <  NEXT_PX0 + (ndx0 + 1'b1) * NEXT_CELL) &&
+        (pixel_y >= NEXT_PY0 + ndy0 * NEXT_CELL) &&
+        (pixel_y <  NEXT_PY0 + (ndy0 + 1'b1) * NEXT_CELL);
+
+    assign next1_on =
+        (pixel_x >= NEXT_PX0 + ndx1 * NEXT_CELL) &&
+        (pixel_x <  NEXT_PX0 + (ndx1 + 1'b1) * NEXT_CELL) &&
+        (pixel_y >= NEXT_PY0 + ndy1 * NEXT_CELL) &&
+        (pixel_y <  NEXT_PY0 + (ndy1 + 1'b1) * NEXT_CELL);
+
+    assign next2_on =
+        (pixel_x >= NEXT_PX0 + ndx2 * NEXT_CELL) &&
+        (pixel_x <  NEXT_PX0 + (ndx2 + 1'b1) * NEXT_CELL) &&
+        (pixel_y >= NEXT_PY0 + ndy2 * NEXT_CELL) &&
+        (pixel_y <  NEXT_PY0 + (ndy2 + 1'b1) * NEXT_CELL);
+
+    assign next3_on =
+        (pixel_x >= NEXT_PX0 + ndx3 * NEXT_CELL) &&
+        (pixel_x <  NEXT_PX0 + (ndx3 + 1'b1) * NEXT_CELL) &&
+        (pixel_y >= NEXT_PY0 + ndy3 * NEXT_CELL) &&
+        (pixel_y <  NEXT_PY0 + (ndy3 + 1'b1) * NEXT_CELL);
+
+    wire pixel_is_next_piece;
+    assign pixel_is_next_piece = next0_on || next1_on || next2_on || next3_on;
+
+    // ------------------------------------------------------------
+    // Color mapping
+    // ------------------------------------------------------------
     reg [3:0] active_cell;
+    reg [3:0] next_cell;
     reg [11:0] active_color;
+    reg [11:0] next_color;
     reg [11:0] board_color;
     reg [11:0] rgb;
 
@@ -181,15 +425,41 @@ module tetris_video (
     end
 
     always @* begin
+        case (next_piece_type)
+            PIECE_I: next_cell = CELL_I;
+            PIECE_O: next_cell = CELL_O;
+            PIECE_T: next_cell = CELL_T;
+            PIECE_S: next_cell = CELL_S;
+            PIECE_Z: next_cell = CELL_Z;
+            PIECE_J: next_cell = CELL_J;
+            PIECE_L: next_cell = CELL_L;
+            default: next_cell = CELL_EMPTY;
+        endcase
+    end
+
+    always @* begin
         case (active_cell)
-            CELL_I:     active_color = 12'h0ff;
-            CELL_O:     active_color = 12'hff0;
-            CELL_T:     active_color = 12'hf0f;
-            CELL_S:     active_color = 12'h0f0;
-            CELL_Z:     active_color = 12'hf00;
-            CELL_J:     active_color = 12'h00f;
-            CELL_L:     active_color = 12'hfa0;
-            default:    active_color = 12'hfff;
+            CELL_I:  active_color = 12'h0ff;
+            CELL_O:  active_color = 12'hff0;
+            CELL_T:  active_color = 12'hf0f;
+            CELL_S:  active_color = 12'h0f0;
+            CELL_Z:  active_color = 12'hf00;
+            CELL_J:  active_color = 12'h00f;
+            CELL_L:  active_color = 12'hfa0;
+            default: active_color = 12'hfff;
+        endcase
+    end
+
+    always @* begin
+        case (next_cell)
+            CELL_I:  next_color = 12'h0ff;
+            CELL_O:  next_color = 12'hff0;
+            CELL_T:  next_color = 12'hf0f;
+            CELL_S:  next_color = 12'h0f0;
+            CELL_Z:  next_color = 12'hf00;
+            CELL_J:  next_color = 12'h00f;
+            CELL_L:  next_color = 12'hfa0;
+            default: next_color = 12'hfff;
         endcase
     end
 
@@ -207,26 +477,67 @@ module tetris_video (
         endcase
     end
 
+    // ------------------------------------------------------------
+    // Final pixel priority
+    // ------------------------------------------------------------
     always @* begin
         if (!video_on) begin
             rgb = 12'h000;
-        end else if (game_state == GS_TITLE) begin
-            if (in_board_area)
-                rgb = 12'h113;
+        end
+
+        // Game Over overlay
+        else if ((game_state == GS_GAME_OVER) && gameover_border) begin
+            rgb = 12'hf00;
+        end else if ((game_state == GS_GAME_OVER) && in_gameover_panel) begin
+            rgb = 12'h300;
+        end
+
+        // Title state background
+        else if (game_state == GS_TITLE) begin
+            if (in_title_bar)
+                rgb = 12'h06f;
+            else if (next_box_border || info_box_border || help_bar_border || board_border)
+                rgb = 12'h0ff;
+            else if (in_board_area)
+                rgb = 12'h112;
+            else if (in_next_box || in_info_box || in_help_bar)
+                rgb = 12'h013;
             else
-                rgb = 12'h024;
-        end else if (game_state == GS_GAME_OVER) begin
-            if (in_board_area)
-                rgb = 12'h411;
-            else
-                rgb = 12'h200;
-        end else if (show_active_piece) begin
+                rgb = 12'h001;
+        end
+
+        // Active game screen
+        else if (show_active_piece) begin
             rgb = active_color;
         end else if (in_board_area && (board_cell_value != CELL_EMPTY)) begin
             rgb = board_color;
+        end else if (pixel_is_next_piece) begin
+            rgb = next_color;
+        end else if (score_bar) begin
+            rgb = 12'h0f0;
+        end else if (level_bar) begin
+            rgb = 12'hff0;
+        end else if (lines_bar) begin
+            rgb = 12'h0ff;
+        end else if (board_border) begin
+            rgb = 12'hfff;
+        end else if (next_box_border) begin
+            rgb = 12'h0ff;
+        end else if (info_box_border || info_sep_line) begin
+            rgb = 12'hff0;
+        end else if (help_bar_border) begin
+            rgb = 12'h888;
         end else if (grid_line) begin
-            rgb = 12'h666;
+            rgb = 12'h555;
         end else if (in_board_area) begin
+            rgb = 12'h111;
+        end else if (in_title_bar) begin
+            rgb = 12'h024;
+        end else if (in_next_box) begin
+            rgb = 12'h012;
+        end else if (in_info_box) begin
+            rgb = 12'h210;
+        end else if (in_help_bar) begin
             rgb = 12'h111;
         end else begin
             rgb = 12'h000;
