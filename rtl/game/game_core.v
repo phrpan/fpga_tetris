@@ -39,6 +39,8 @@ module game_core (
     localparam [3:0] PH_CLEAR_TOP   = 4'd8;
     localparam [3:0] PH_SCORE       = 4'd9;
     localparam [3:0] PH_GAME_OVER   = 4'd10;
+    localparam [3:0] PH_RESTART_CLEAR = 4'd11;
+    localparam [3:0] PH_RESTART_RESET = 4'd12;
 
     localparam [2:0] ACT_NONE   = 3'd0;
     localparam [2:0] ACT_MOVE   = 3'd1;
@@ -69,6 +71,8 @@ module game_core (
     reg [2:0] clear_count_reg;
 
     reg score_clear_event;
+    reg score_restart_rst;
+    wire score_rst;
     wire [2:0] random_piece_type;
     wire random_enable;
 
@@ -79,6 +83,7 @@ module game_core (
     integer col;
 
     assign random_enable = (core_phase == PH_SPAWN_LOAD);
+    assign score_rst = rst | score_restart_rst;
 
     random_lfsr random_piece_gen (
         .clk_100m(clk_100m),
@@ -89,7 +94,7 @@ module game_core (
 
     score_level score_level_inst (
         .clk_100m(clk_100m),
-        .rst(rst),
+        .rst(score_rst),
         .clear_event(score_clear_event),
         .clear_count(clear_count_reg),
         .score(score),
@@ -199,8 +204,10 @@ module game_core (
             row_full <= 1'b1;
             clear_count_reg <= 3'd0;
             score_clear_event <= 1'b0;
+            score_restart_rst <= 1'b0;
         end else begin
             score_clear_event <= 1'b0;
+            score_restart_rst <= 1'b0;
 
             case (core_phase)
                 PH_TITLE: begin
@@ -446,14 +453,45 @@ module game_core (
                 PH_GAME_OVER: begin
                     game_state <= GS_GAME_OVER;
                     if (btn_start_pulse) begin
-                        for (row = 0; row < BOARD_ROWS; row = row + 1) begin
-                            for (col = 0; col < BOARD_COLS; col = col + 1) begin
-                                board[row][col] <= CELL_EMPTY;
-                            end
-                        end
-                        core_phase <= PH_SPAWN_LOAD;
-                        game_state <= GS_SPAWN;
+                        scan_row <= 5'd0;
+                        scan_col <= 4'd0;
+                        core_phase <= PH_RESTART_CLEAR;
                     end
+                end
+
+                PH_RESTART_CLEAR: begin
+                    game_state <= GS_GAME_OVER;
+                    board[scan_row][scan_col] <= CELL_EMPTY;
+
+                    if ((scan_row == (BOARD_ROWS - 1)) && (scan_col == (BOARD_COLS - 1))) begin
+                        core_phase <= PH_RESTART_RESET;
+                    end else if (scan_col == (BOARD_COLS - 1)) begin
+                        scan_row <= scan_row + 1'b1;
+                        scan_col <= 4'd0;
+                    end else begin
+                        scan_col <= scan_col + 1'b1;
+                    end
+                end
+
+                PH_RESTART_RESET: begin
+                    game_state <= GS_GAME_OVER;
+                    score_restart_rst <= 1'b1;
+                    cur_piece_type <= PIECE_T;
+                    cur_piece_rot <= 2'd0;
+                    cur_piece_x <= 5'sd3;
+                    cur_piece_y <= 6'sd0;
+                    next_piece_type <= PIECE_T;
+                    gravity_counter <= 26'd0;
+                    candidate_x <= 5'sd3;
+                    candidate_y <= 6'sd0;
+                    candidate_rot <= 2'd0;
+                    candidate_action <= ACT_NONE;
+                    check_idx <= 2'd0;
+                    check_collision <= 1'b0;
+                    lock_idx <= 2'd0;
+                    clear_count_reg <= 3'd0;
+                    core_phase <= PH_SPAWN_LOAD;
+                    game_state <= GS_SPAWN;
                 end
 
                 default: begin

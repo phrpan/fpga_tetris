@@ -281,3 +281,27 @@
 
 - 按键后 LED 状态有响应，说明 reset、button、game_core、LED 链路基本打通。
 - 该结果仅表示核心状态链路初步打通，不表示完整游戏显示和交互功能已经完成验证。
+
+## 15. Game Over 后 Restart
+
+调试目标：
+
+- 在保持 `game_core.v` 顶层接口不变的前提下，实现 `GS_GAME_OVER` 状态下按 `btn_start_pulse` 重新开始游戏。
+
+遇到的问题：
+
+- `score_level.v` 只通过 `rst` 复位，不能修改该已验证子模块。
+- Game Over 后重启需要清空棋盘，但不能重新引入 `board_flat` / `board_flat_out`，也不能使用一拍清空整板的结构。
+
+解决方法：
+
+- 在 `game_core.v` 内部新增 restart 顺序阶段。
+- `GS_GAME_OVER` 下检测到 `btn_start_pulse` 后，使用 `scan_row` 和 `scan_col` 逐格清空 board，每个时钟周期只清一个 cell。
+- 清空完成后，复位当前方块、下一个方块、位置、旋转、重力计数和内部检查寄存器。
+- 在 `game_core.v` 内部给 `score_level` 的 `rst` 增加局部 restart 复位脉冲，使 `score`、`lines`、`level` 回到初始状态，同时不修改 `score_level.v`。
+
+验证结果：
+
+- `tb_game_core.v` 增加 Game Over 后按 start 重启测试：构造非空棋盘和非零分数，进入 `GS_GAME_OVER`，发送 start pulse 后等待重新进入 `GS_PLAY`。
+- 测试检查重启后棋盘指定 cell 已清空，`score=0`、`lines=0`、`level=1`，当前方块位置和旋转回到初始值。
+- 该验证说明 Game Over 后 restart 的核心状态链路已通过仿真覆盖，不代表完整游戏显示链路已完成验证。

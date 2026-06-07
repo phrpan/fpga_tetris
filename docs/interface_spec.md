@@ -370,6 +370,18 @@ board-wide compression in a single combinational step. It still does not
 support hold, ghost, hard drop, pause, clear animation, audio pulse, or wall
 kick.
 
+Restart behavior from `GS_GAME_OVER`:
+
+- While in `GS_GAME_OVER`, `btn_start_pulse` starts an internal restart
+  sequence without changing the `game_core` top-level interface.
+- The restart sequence clears the internal board one cell per clock using a
+  sequential FSM; it does not use `board_flat`, `board_flat_out`, or a
+  one-cycle board-wide clear loop.
+- After the board is cleared, the core resets the current piece, next piece,
+  position, rotation, gravity counter, and score bookkeeping, then continues
+  through `GS_SPAWN`.
+- After restart completes, `score = 0`, `lines = 0`, and `level = 1`.
+
 This section documents helper modules used inside `game_core`. These are internal game-core datapath interfaces, not VGA or IO external interfaces.
 
 ### `collision_check.v`

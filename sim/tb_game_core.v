@@ -132,6 +132,24 @@ module tb_game_core;
         end
     endtask
 
+    task force_game_over_context;
+        begin
+            @(negedge clk_100m);
+            dut.board[0][4] = CELL_T;
+            dut.board[19][0] = CELL_I;
+            dut.score_level_inst.score = 16'd1234;
+            dut.score_level_inst.lines = 8'd12;
+            dut.score_level_inst.level = 4'd2;
+            dut.core_phase = 4'd10;
+            dut.game_state = GS_GAME_OVER;
+            dut.cur_piece_type = PIECE_T;
+            dut.cur_piece_rot = 2'd0;
+            dut.cur_piece_x = 5'sd3;
+            dut.cur_piece_y = 6'sd0;
+            @(posedge clk_100m);
+        end
+    endtask
+
     initial begin
         error_count = 0;
         rst = 1'b1;
@@ -197,6 +215,38 @@ module tb_game_core;
         board_query_col = cur_piece_x[3:0];
         repeat (2) @(posedge clk_100m);
         check_no_x();
+
+        force_game_over_context();
+        if (game_state != GS_GAME_OVER) begin
+            fail("forced context should enter GS_GAME_OVER");
+        end
+
+        pulse_start();
+        wait_for_play(260);
+
+        if (score != 16'd0 || lines != 8'd0 || level != 4'd1) begin
+            fail("restart should reset score/lines/level");
+        end
+        if (cur_piece_x != 5'sd3 || cur_piece_y != 6'sd0 || cur_piece_rot != 2'd0) begin
+            fail("restart should reset current piece position and rotation");
+        end
+        if (cur_piece_type > PIECE_L || next_piece_type > PIECE_L) begin
+            fail("restart should keep current and next pieces legal");
+        end
+
+        board_query_row = 5'd19;
+        board_query_col = 4'd0;
+        repeat (2) @(posedge clk_100m);
+        if (board_cell_value != CELL_EMPTY) begin
+            fail("restart should clear bottom-left board cell");
+        end
+
+        board_query_row = 5'd0;
+        board_query_col = 4'd4;
+        repeat (2) @(posedge clk_100m);
+        if (board_cell_value != CELL_EMPTY) begin
+            fail("restart should clear spawn-blocking board cell");
+        end
 
         repeat (128) begin
             @(posedge clk_100m);
