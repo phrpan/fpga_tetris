@@ -150,6 +150,29 @@ module tb_game_core;
         end
     endtask
 
+    task force_play_gravity_context;
+        input [3:0] forced_level;
+        input [25:0] forced_counter;
+        begin
+            @(negedge clk_100m);
+            dut.score_level_inst.level = forced_level;
+            dut.core_phase = 4'd3;
+            dut.game_state = GS_PLAY;
+            dut.cur_piece_type = PIECE_T;
+            dut.cur_piece_rot = 2'd0;
+            dut.cur_piece_x = 5'sd3;
+            dut.cur_piece_y = 6'sd0;
+            dut.candidate_x = 5'sd3;
+            dut.candidate_y = 6'sd0;
+            dut.candidate_rot = 2'd0;
+            dut.candidate_action = 3'd0;
+            dut.check_idx = 2'd0;
+            dut.check_collision = 1'b0;
+            dut.gravity_counter = forced_counter;
+            @(posedge clk_100m);
+        end
+    endtask
+
     initial begin
         error_count = 0;
         rst = 1'b1;
@@ -246,6 +269,18 @@ module tb_game_core;
         repeat (2) @(posedge clk_100m);
         if (board_cell_value != CELL_EMPTY) begin
             fail("restart should clear spawn-blocking board cell");
+        end
+
+        force_play_gravity_context(4'd1, 26'd4500000);
+        repeat (8) @(posedge clk_100m);
+        if (cur_piece_y != 6'sd0) begin
+            fail("level 1 should not fall at the level 2 threshold");
+        end
+
+        force_play_gravity_context(4'd2, 26'd4500000);
+        repeat (8) @(posedge clk_100m);
+        if (cur_piece_y <= 6'sd0) begin
+            fail("level 2 should fall at its shorter gravity threshold");
         end
 
         repeat (128) begin

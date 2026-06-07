@@ -305,3 +305,27 @@
 - `tb_game_core.v` 增加 Game Over 后按 start 重启测试：构造非空棋盘和非零分数，进入 `GS_GAME_OVER`，发送 start pulse 后等待重新进入 `GS_PLAY`。
 - 测试检查重启后棋盘指定 cell 已清空，`score=0`、`lines=0`、`level=1`，当前方块位置和旋转回到初始值。
 - 该验证说明 Game Over 后 restart 的核心状态链路已通过仿真覆盖，不代表完整游戏显示链路已完成验证。
+
+## 16. 等级影响自动下落速度
+
+调试目标：
+
+- 在保持 `game_core.v` 顶层接口不变的前提下，使普通自动下落速度随 `level` 提高而加快。
+
+遇到的问题：
+
+- `score_level.v` 已经根据消行数计算 `level`，但原 `game_core.v` 中普通自动下落仍使用固定 `NORMAL_FALL_TICKS`。
+- 仿真中直接等待 5,000,000 个 100MHz 时钟周期效率较低，不适合作为常规回归测试方式。
+
+解决方法：
+
+- 在 `game_core.v` 内部新增 `normal_fall_ticks_by_level`。
+- 使用 Verilog-2001 `always @*` 和 `case(level)` 生成等级到普通下落周期的映射，不使用除法、乘法或复杂动态运算。
+- `PH_PLAY` 中普通自动下落比较改为使用 `normal_fall_ticks_by_level`。
+- `btn_soft_drop_hold` 仍继续使用固定 `SOFT_FALL_TICKS`。
+
+验证结果：
+
+- `tb_game_core.v` 增加等级加速测试。
+- 测试将内部 gravity 计数器设置到 level 2 的阈值 `4,500,000` 附近，对比 level 1 和 level 2：level 1 不触发下落，level 2 触发下落。
+- 该测试验证了等级会影响普通自动下落周期，同时没有改变 `game_core.v` 顶层接口。

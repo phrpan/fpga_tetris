@@ -382,6 +382,25 @@ Restart behavior from `GS_GAME_OVER`:
   through `GS_SPAWN`.
 - After restart completes, `score = 0`, `lines = 0`, and `level = 1`.
 
+Level-based gravity behavior:
+
+- Normal automatic fall speed depends on `level`.
+- `level` is produced by `score_level.v` from total cleared lines.
+- `game_core.v` maps `level` to `normal_fall_ticks_by_level` using a
+  Verilog `case` statement; no division, multiplication, or wide board logic is
+  used for this speed selection.
+- `btn_soft_drop_hold` continues to use the fixed `SOFT_FALL_TICKS` interval.
+- Mapping:
+  - level 1: `5,000,000` ticks
+  - level 2: `4,500,000` ticks
+  - level 3: `4,000,000` ticks
+  - level 4: `3,500,000` ticks
+  - level 5: `3,000,000` ticks
+  - level 6: `2,500,000` ticks
+  - level 7: `2,000,000` ticks
+  - level 8: `1,500,000` ticks
+  - level 9 and above: `1,000,000` ticks
+
 This section documents helper modules used inside `game_core`. These are internal game-core datapath interfaces, not VGA or IO external interfaces.
 
 ### `collision_check.v`

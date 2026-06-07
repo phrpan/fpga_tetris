@@ -52,6 +52,7 @@ module game_core (
 
     reg [3:0] core_phase;
     reg [25:0] gravity_counter;
+    reg [25:0] normal_fall_ticks_by_level;
 
     reg signed [4:0] candidate_x;
     reg signed [5:0] candidate_y;
@@ -167,6 +168,20 @@ module game_core (
     assign block_col = block_x_signed[3:0];
     assign lock_row = lock_y_signed[4:0];
     assign lock_col = lock_x_signed[3:0];
+
+    always @* begin
+        case (level)
+            4'd1: normal_fall_ticks_by_level = 26'd5000000;
+            4'd2: normal_fall_ticks_by_level = 26'd4500000;
+            4'd3: normal_fall_ticks_by_level = 26'd4000000;
+            4'd4: normal_fall_ticks_by_level = 26'd3500000;
+            4'd5: normal_fall_ticks_by_level = 26'd3000000;
+            4'd6: normal_fall_ticks_by_level = 26'd2500000;
+            4'd7: normal_fall_ticks_by_level = 26'd2000000;
+            4'd8: normal_fall_ticks_by_level = 26'd1500000;
+            default: normal_fall_ticks_by_level = 26'd1000000;
+        endcase
+    end
 
     always @* begin
         board_cell_value = board_cell(board_query_row, board_query_col);
@@ -294,7 +309,7 @@ module game_core (
                         check_idx <= 2'd0;
                         check_collision <= 1'b0;
                         core_phase <= PH_CHECK;
-                    end else if (gravity_counter >= (btn_soft_drop_hold ? SOFT_FALL_TICKS : NORMAL_FALL_TICKS)) begin
+                    end else if (gravity_counter >= (btn_soft_drop_hold ? SOFT_FALL_TICKS : normal_fall_ticks_by_level)) begin
                         candidate_x <= cur_piece_x;
                         candidate_y <= cur_piece_y + 1'b1;
                         candidate_rot <= cur_piece_rot;
