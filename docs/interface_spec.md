@@ -401,6 +401,18 @@ Level-based gravity behavior:
   - level 8: `1,500,000` ticks
   - level 9 and above: `1,000,000` ticks
 
+Pause/resume behavior:
+
+- `game_core.v` reuses `btn_start_pulse` for pause control without changing
+  the top-level interface.
+- In `GS_TITLE`, `btn_start_pulse` starts the game.
+- In `GS_PLAY`, `btn_start_pulse` enters `GS_PAUSE`.
+- In `GS_PAUSE`, `btn_start_pulse` returns to `GS_PLAY`.
+- In `GS_GAME_OVER`, `btn_start_pulse` keeps the documented restart behavior.
+- While in `GS_PAUSE`, gravity does not advance, left/right/rotate/soft-drop
+  inputs are ignored, and board, current piece, score, lines, and level remain
+  unchanged.
+
 This section documents helper modules used inside `game_core`. These are internal game-core datapath interfaces, not VGA or IO external interfaces.
 
 ### `collision_check.v`
@@ -596,6 +608,8 @@ Initial behavior:
 - In `GS_TITLE`, `btn_start_pulse` clears the board and moves to `GS_SPAWN`.
 - In `GS_SPAWN`, load `cur_piece_type` from `next_piece_type`, generate a new legal `next_piece_type`, reset piece position and rotation, check spawn collision, then enter `GS_PLAY` or `GS_GAME_OVER`.
 - In `GS_PLAY`, left, right, and rotate pulses are accepted only when the corresponding candidate placement does not collide.
+- In `GS_PLAY`, `btn_start_pulse` enters `GS_PAUSE`.
+- In `GS_PAUSE`, `btn_start_pulse` returns to `GS_PLAY`; movement, rotation, soft drop, and gravity are paused.
 - In `GS_PLAY`, gravity periodically tests `y + 1`; if valid, the piece falls, otherwise the state moves to `GS_LOCK`.
 - `btn_soft_drop_hold` uses a faster gravity interval.
 - In `GS_LOCK`, the 4 current piece blocks are written into the board using `CELL_I` through `CELL_L` encodings, not raw `piece_type`.
@@ -608,7 +622,6 @@ Initial limitations:
 - This version does not support Hold.
 - This version does not support Ghost display.
 - This version does not support hard drop.
-- This version does not support pause.
 - This version does not support clear animation.
 - This version does not generate audio event pulses.
 - This version does not implement wall kick.

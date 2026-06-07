@@ -41,6 +41,7 @@ module game_core (
     localparam [3:0] PH_GAME_OVER   = 4'd10;
     localparam [3:0] PH_RESTART_CLEAR = 4'd11;
     localparam [3:0] PH_RESTART_RESET = 4'd12;
+    localparam [3:0] PH_PAUSE       = 4'd13;
 
     localparam [2:0] ACT_NONE   = 3'd0;
     localparam [2:0] ACT_MOVE   = 3'd1;
@@ -285,7 +286,10 @@ module game_core (
                 PH_PLAY: begin
                     game_state <= GS_PLAY;
 
-                    if (btn_left_pulse) begin
+                    if (btn_start_pulse) begin
+                        core_phase <= PH_PAUSE;
+                        game_state <= GS_PAUSE;
+                    end else if (btn_left_pulse) begin
                         candidate_x <= cur_piece_x - 1'b1;
                         candidate_y <= cur_piece_y;
                         candidate_rot <= cur_piece_rot;
@@ -320,6 +324,14 @@ module game_core (
                         core_phase <= PH_CHECK;
                     end else begin
                         gravity_counter <= gravity_counter + 1'b1;
+                    end
+                end
+
+                PH_PAUSE: begin
+                    game_state <= GS_PAUSE;
+                    if (btn_start_pulse) begin
+                        core_phase <= PH_PLAY;
+                        game_state <= GS_PLAY;
                     end
                 end
 

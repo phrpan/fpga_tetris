@@ -329,3 +329,28 @@
 - `tb_game_core.v` 增加等级加速测试。
 - 测试将内部 gravity 计数器设置到 level 2 的阈值 `4,500,000` 附近，对比 level 1 和 level 2：level 1 不触发下落，level 2 触发下落。
 - 该测试验证了等级会影响普通自动下落周期，同时没有改变 `game_core.v` 顶层接口。
+
+## 17. Pause / Resume
+
+调试目标：
+
+- 在保持 `game_core.v` 顶层接口不变的前提下，复用 `btn_start_pulse` 实现暂停和继续。
+
+遇到的问题：
+
+- 当前 `game_core.v` 接口中没有单独的 pause 输入，不能新增顶层端口。
+- 暂停期间需要停止自动下落和输入动作，同时保持 board、当前方块、分数、行数和等级不变。
+
+解决方法：
+
+- 在 `game_core.v` 内部新增 `PH_PAUSE` 阶段，对外输出使用已有 `GS_PAUSE` 状态编码。
+- `GS_PLAY` 下检测到 `btn_start_pulse` 后进入 `GS_PAUSE`。
+- `GS_PAUSE` 下再次检测到 `btn_start_pulse` 后返回 `GS_PLAY`。
+- `GS_PAUSE` 内不推进 `gravity_counter`，不处理 left/right/rotate/soft_drop，也不修改 board 或计分状态。
+
+验证结果：
+
+- `tb_game_core.v` 增加 pause/resume 测试。
+- 测试进入 `GS_PLAY` 后记录当前方块位置、旋转、分数、行数和等级；发送 start pulse 后确认进入 `GS_PAUSE`。
+- 暂停期间施加 left/right/rotate/soft_drop 并等待若干周期，确认上述状态均保持不变。
+- 再次发送 start pulse 后确认返回 `GS_PLAY`。

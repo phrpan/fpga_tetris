@@ -25,6 +25,12 @@ module tb_game_core;
     wire [2:0] game_state;
 
     integer error_count;
+    reg signed [4:0] saved_piece_x;
+    reg signed [5:0] saved_piece_y;
+    reg [1:0] saved_piece_rot;
+    reg [15:0] saved_score;
+    reg [7:0] saved_lines;
+    reg [3:0] saved_level;
 
     game_core dut (
         .clk_100m(clk_100m),
@@ -232,6 +238,44 @@ module tb_game_core;
         btn_soft_drop_hold = 1'b0;
         if (cur_piece_y == 6'sd0) begin
             fail("soft drop should advance the piece downward");
+        end
+
+        saved_piece_x = cur_piece_x;
+        saved_piece_y = cur_piece_y;
+        saved_piece_rot = cur_piece_rot;
+        saved_score = score;
+        saved_lines = lines;
+        saved_level = level;
+
+        pulse_start();
+        repeat (2) @(posedge clk_100m);
+        if (game_state != GS_PAUSE) begin
+            fail("start pulse in GS_PLAY should enter GS_PAUSE");
+        end
+
+        pulse_left();
+        pulse_right();
+        pulse_rotate();
+        btn_soft_drop_hold = 1'b1;
+        repeat (32) @(posedge clk_100m);
+        btn_soft_drop_hold = 1'b0;
+
+        if (game_state != GS_PAUSE) begin
+            fail("game_state should remain GS_PAUSE while paused");
+        end
+        if (cur_piece_x != saved_piece_x ||
+            cur_piece_y != saved_piece_y ||
+            cur_piece_rot != saved_piece_rot) begin
+            fail("pause should hold current piece position and rotation");
+        end
+        if (score != saved_score || lines != saved_lines || level != saved_level) begin
+            fail("pause should hold score/lines/level");
+        end
+
+        pulse_start();
+        repeat (2) @(posedge clk_100m);
+        if (game_state != GS_PLAY) begin
+            fail("start pulse in GS_PAUSE should resume GS_PLAY");
         end
 
         board_query_row = cur_piece_y[4:0];
