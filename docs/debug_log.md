@@ -354,3 +354,28 @@
 - 测试进入 `GS_PLAY` 后记录当前方块位置、旋转、分数、行数和等级；发送 start pulse 后确认进入 `GS_PAUSE`。
 - 暂停期间施加 left/right/rotate/soft_drop 并等待若干周期，确认上述状态均保持不变。
 - 再次发送 start pulse 后确认返回 `GS_PLAY`。
+
+## 18. IO 按键输入模块集成
+
+调试目标：
+
+- 集成当前 `game_core.v` 实际使用的按键输入链路，只提供 start、left、right、rotate 和 soft drop 五个输入动作。
+
+遇到的问题：
+
+- develop 中的 `button_input.v` 同时包含 hard drop、pause、reset 等输出，与当前 `game_core` 接口范围不一致。
+- 原 testbench 主要依赖波形观察，没有自动 PASS/FAIL 检查。
+- 真实 10 ms 消抖时间不适合直接用于快速仿真回归。
+
+解决方法：
+
+- 将 `button_input.v` 收敛为五个输出：`btn_start_pulse`、`btn_left_pulse`、`btn_right_pulse`、`btn_rotate_pulse` 和 `btn_soft_drop_hold`。
+- 保留 `debounce.v` 和 `one_pulse.v` 作为通用输入辅助模块。
+- `button_input.v` 新增 `DEBOUNCE_TICKS` 参数，硬件默认约 10 ms，testbench 可覆盖为较小值。
+- pause/resume 继续由 `game_core` 复用 `btn_start_pulse` 实现；hold、hard drop、独立 pause/reset 暂不接入。
+
+验证结果：
+
+- `tb_button_input.v` 增加自动检查，覆盖 start/left/right/rotate 单周期 pulse、按住不重复、短抖动过滤、soft drop 按住持续高、释放后变低和 reset 清零。
+- `tb_debounce.v` 增加自动检查，覆盖复位、抖动过滤、稳定按下、稳定释放和多按键同时输入。
+- `tb_one_pulse.v` 增加自动检查，覆盖单 bit 上升沿、多 bit 同时上升沿、按住不重复和释放不触发。

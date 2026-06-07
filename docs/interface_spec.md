@@ -290,31 +290,47 @@ Generate VGA timing and current pixel coordinate.
 ### `button_input.v`
 
 ```verilog
-module button_input (
-    input  wire       clk_100m,
-    input  wire       rst,
-    input  wire       btnc,
-    input  wire       btnu,
-    input  wire       btnd,
-    input  wire       btnl,
-    input  wire       btnr,
-    input  wire [1:0] sw,
+module button_input #(
+    parameter DEBOUNCE_TICKS = 20'd999_999
+)(
+    input  wire clk_100m,
+    input  wire rst,
 
-    output wire       btn_left_pulse,
-    output wire       btn_right_pulse,
-    output wire       btn_rotate_pulse,
-    output wire       btn_soft_drop_hold,
-    output wire       btn_hard_drop_pulse,
-    output wire       btn_hold_pulse,
-    output wire       btn_pause_pulse,
-    output wire       btn_start_pulse,
-    output wire       btn_reset_pulse
+    input  wire btnc,
+    input  wire btnu,
+    input  wire btnd,
+    input  wire btnl,
+    input  wire btnr,
+
+    output wire btn_start_pulse,
+    output wire btn_left_pulse,
+    output wire btn_right_pulse,
+    output wire btn_rotate_pulse,
+    output wire btn_soft_drop_hold
 );
 ```
 
 Function:
 
-Convert board buttons and switches into unified game action signals.
+Convert board buttons into the current game action signals consumed by
+`game_core`.
+
+Current integration scope:
+
+- `button_input.v` currently exposes only the five signals consumed by the
+  current `game_core`: `btn_start_pulse`, `btn_left_pulse`,
+  `btn_right_pulse`, `btn_rotate_pulse`, and `btn_soft_drop_hold`.
+- `btn_start_pulse`, `btn_left_pulse`, `btn_right_pulse`, and
+  `btn_rotate_pulse` are debounced rising-edge pulses, one `clk_100m` cycle
+  wide.
+- `btn_soft_drop_hold` is a debounced hold-level signal and remains high while
+  `BTND` is held.
+- Pause/resume is handled by reusing `btn_start_pulse` in `game_core`.
+- `btn_pause_pulse`, `btn_hold_pulse`, `btn_hard_drop_pulse`, and
+  `btn_reset_pulse` are future optional actions and are not part of this
+  current button-input integration.
+- `DEBOUNCE_TICKS` defaults to `999_999`, about 10 ms at 100 MHz; testbenches
+  may override it with a smaller value for faster simulation.
 
 ### `game_core_minimal.v`
 
