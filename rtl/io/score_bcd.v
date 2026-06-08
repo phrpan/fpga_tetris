@@ -1,32 +1,25 @@
-// score_bcd.v - 16位二进制分数 → 5位 BCD 码（显示用）
-// Day 1 版本：直接透传低8位，高位清零
+// score_bcd.v - 16位二进制分数 → 2位 BCD 码（时序逻辑版）
+// 输入：0~99，输出：十位 + 个位（0-9时十位自动补0）
 
 `timescale 1ns / 1ps
 
 module score_bcd (
-    input  wire [15:0] score_bin,
-    output reg  [3:0]  digit4,   // 万位
-    output reg  [3:0]  digit3,   // 千位
-    output reg  [3:0]  digit2,   // 百位
-    output reg  [3:0]  digit1,   // 十位
-    output reg  [3:0]  digit0    // 个位
+    input  wire        clk_100m,          // 时钟（与七段驱动同步）
+    input  wire        rst,          // 复位（高有效）
+    input  wire [15:0] score_bin,    // 输入：0~99
+    output reg  [3:0]  digit1,       // 十位（BCD）
+    output reg  [3:0]  digit0        // 个位（BCD）
 );
 
-    // 简易 Bin → BCD（仅支持 0~99999）
-    integer i;
-    reg [15:0] tmp;
-
-    always @(*) begin
-        tmp = score_bin;
-        digit4 = 4'd0;
-        for (i = 0; i < 5; i = i + 1) begin
-            case (i)
-                0: digit0 = tmp % 10;
-                1: digit1 = (tmp / 10) % 10;
-                2: digit2 = (tmp / 100) % 10;
-                3: digit3 = (tmp / 1000) % 10;
-                4: digit4 = (tmp / 10000) % 10;
-            endcase
+    // 时序逻辑：在时钟上升沿更新输出
+    // 优点：避免毛刺，与七段驱动模块时钟域一致
+    always @(posedge clk_100m or posedge rst) begin
+        if (rst) begin
+            digit1 <= 4'd0;
+            digit0 <= 4'd0;
+        end else begin
+            digit0 <= score_bin % 10;          // 个位
+            digit1 <= (score_bin / 10) % 10;   // 十位（0-9时自动为0）
         end
     end
 
