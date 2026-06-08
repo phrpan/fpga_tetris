@@ -318,6 +318,7 @@ module tetris_video (
         (
             (game_state == GS_SPAWN) ||
             (game_state == GS_PLAY)  ||
+            (game_state == GS_PAUSE) ||
             (game_state == GS_LOCK)
         );
 
