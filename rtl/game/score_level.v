@@ -17,10 +17,10 @@ function [15:0] score_delta;
     input [3:0] cur_level;
 begin
     case (count)
-        3'd1: score_delta = 16'd100 * cur_level;
-        3'd2: score_delta = 16'd300 * cur_level;
-        3'd3: score_delta = 16'd500 * cur_level;
-        3'd4: score_delta = 16'd800 * cur_level;
+        3'd1: score_delta = 16'd1 * cur_level;
+        3'd2: score_delta = 16'd2 * cur_level;
+        3'd3: score_delta = 16'd3 * cur_level;
+        3'd4: score_delta = 16'd4 * cur_level;
         default: score_delta = 16'd0;
     endcase
 end

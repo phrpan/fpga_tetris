@@ -213,29 +213,7 @@ module tetris_video (
             (pixel_y == INFO_Y0 + 140)
         );
 
-    // Decorative colored bars to show score / level / lines areas
-    wire score_bar;
-    wire level_bar;
-    wire lines_bar;
-
-    assign score_bar =
-        (pixel_x >= INFO_X0 + 15) &&
-        (pixel_x <  INFO_X0 + 15 + score[7:0]) &&
-        (pixel_y >= INFO_Y0 + 35) &&
-        (pixel_y <  INFO_Y0 + 45);
-
-    assign level_bar =
-        (pixel_x >= INFO_X0 + 15) &&
-        (pixel_x <  INFO_X0 + 15 + {level, 3'b000}) &&
-        (pixel_y >= INFO_Y0 + 105) &&
-        (pixel_y <  INFO_Y0 + 115);
-
-    assign lines_bar =
-        (pixel_x >= INFO_X0 + 15) &&
-        (pixel_x <  INFO_X0 + 15 + lines) &&
-        (pixel_y >= INFO_Y0 + 175) &&
-        (pixel_y <  INFO_Y0 + 185);
-
+   
     // ------------------------------------------------------------
     // Current active piece
     // ------------------------------------------------------------
@@ -401,6 +379,126 @@ module tetris_video (
     wire pixel_is_next_piece;
     assign pixel_is_next_piece = next0_on || next1_on || next2_on || next3_on;
 
+
+    // ------------------------------------------------------------
+    // Decimal number display for SCORE / LEVEL / LINES
+    // ------------------------------------------------------------
+
+    wire [19:0] score_bcd;
+    wire [19:0] lines_bcd;
+    wire [19:0] level_bcd;
+
+    bin16_to_bcd score_bcd_inst (
+        .bin(score),
+        .bcd(score_bcd)
+    );
+
+    bin16_to_bcd lines_bcd_inst (
+        .bin({8'd0, lines}),
+        .bcd(lines_bcd)
+    );
+
+    bin16_to_bcd level_bcd_inst (
+        .bin({12'd0, level}),
+        .bcd(level_bcd)
+    );
+
+    wire score_d0_on;
+    wire score_d1_on;
+    wire score_d2_on;
+    wire score_d3_on;
+    wire score_d4_on;
+
+    wire level_d0_on;
+    wire level_d1_on;
+
+    wire lines_d0_on;
+    wire lines_d1_on;
+    wire lines_d2_on;
+
+    vga_digit7seg #(.X0(INFO_X0 + 15),  .Y0(INFO_Y0 + 25)) score_digit0 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(score_bcd[19:16]),
+        .digit_on(score_d0_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 38),  .Y0(INFO_Y0 + 25)) score_digit1 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(score_bcd[15:12]),
+        .digit_on(score_d1_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 61),  .Y0(INFO_Y0 + 25)) score_digit2 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(score_bcd[11:8]),
+        .digit_on(score_d2_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 84),  .Y0(INFO_Y0 + 25)) score_digit3 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(score_bcd[7:4]),
+        .digit_on(score_d3_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 107), .Y0(INFO_Y0 + 25)) score_digit4 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(score_bcd[3:0]),
+        .digit_on(score_d4_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 45), .Y0(INFO_Y0 + 95)) level_digit0 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(level_bcd[7:4]),
+        .digit_on(level_d0_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 70), .Y0(INFO_Y0 + 95)) level_digit1 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(level_bcd[3:0]),
+        .digit_on(level_d1_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 35), .Y0(INFO_Y0 + 165)) lines_digit0 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(lines_bcd[11:8]),
+        .digit_on(lines_d0_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 60), .Y0(INFO_Y0 + 165)) lines_digit1 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(lines_bcd[7:4]),
+        .digit_on(lines_d1_on)
+    );
+
+    vga_digit7seg #(.X0(INFO_X0 + 85), .Y0(INFO_Y0 + 165)) lines_digit2 (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .digit(lines_bcd[3:0]),
+        .digit_on(lines_d2_on)
+    );
+
+    wire score_digits_on;
+    wire level_digits_on;
+    wire lines_digits_on;
+
+    assign score_digits_on =
+        score_d0_on || score_d1_on || score_d2_on ||
+        score_d3_on || score_d4_on;
+
+    assign level_digits_on =
+        level_d0_on || level_d1_on;
+
+    assign lines_digits_on =
+        lines_d0_on || lines_d1_on || lines_d2_on;
     // ------------------------------------------------------------
     // Color mapping
     // ------------------------------------------------------------
@@ -513,11 +611,11 @@ module tetris_video (
             rgb = board_color;
         end else if (pixel_is_next_piece) begin
             rgb = next_color;
-        end else if (score_bar) begin
+        end else if (score_digits_on) begin
             rgb = 12'h0f0;
-        end else if (level_bar) begin
+        end else if (level_digits_on) begin
             rgb = 12'hff0;
-        end else if (lines_bar) begin
+        end else if (lines_digits_on) begin
             rgb = 12'h0ff;
         end else if (board_border) begin
             rgb = 12'hfff;
