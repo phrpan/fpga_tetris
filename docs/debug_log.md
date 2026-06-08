@@ -379,3 +379,29 @@
 - `tb_button_input.v` 增加自动检查，覆盖 start/left/right/rotate 单周期 pulse、按住不重复、短抖动过滤、soft drop 按住持续高、释放后变低和 reset 清零。
 - `tb_debounce.v` 增加自动检查，覆盖复位、抖动过滤、稳定按下、稳定释放和多按键同时输入。
 - `tb_one_pulse.v` 增加自动检查，覆盖单 bit 上升沿、多 bit 同时上升沿、按住不重复和释放不触发。
+
+## 19. 顶层 VGA + 输入联合调试准备
+
+调试目标：
+
+- 在 `top_vga_debug.v` 中接入正式 `button_input.v`，使板载按钮通过消抖和单脉冲模块驱动 `game_core.v`。
+- 暂停状态下保持当前活动方块在 VGA 画面中显示。
+
+遇到的问题：
+
+- 原 `top_vga_debug.v` 使用临时按键边沿检测逻辑，没有按键消抖。
+- 原 `top_vga_debug.v` 内部存在自动 start pulse，适合 VGA 点亮测试，但不适合正式交互联调。
+- 原 `tetris_video.v` 只在 `GS_SPAWN`、`GS_PLAY` 和 `GS_LOCK` 下显示活动方块，暂停时活动方块会消失。
+
+解决方法：
+
+- 在 `top_vga_debug.v` 中例化 `button_input.v`。
+- 将 `BTNC`、`BTNU`、`BTND`、`BTNL`、`BTNR` 连接到 `button_input.v`。
+- 将 `button_input.v` 输出的五个信号连接到 `game_core.v`：`btn_start_pulse`、`btn_left_pulse`、`btn_right_pulse`、`btn_rotate_pulse` 和 `btn_soft_drop_hold`。
+- 移除临时按键边沿检测逻辑和自动 start pulse。
+- 在 `tetris_video.v` 的活动方块显示条件中加入 `GS_PAUSE`。
+
+验证结果：
+
+- 代码连接关系已准备好进行综合和上板联调。
+- 后续需要在板上验证：`BTNC` 开始、暂停、继续和 Game Over 后重启；`BTNL/BTNR/BTNU/BTND` 控制移动、旋转和软降；暂停时活动方块保持显示。

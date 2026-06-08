@@ -332,6 +332,23 @@ Current integration scope:
 - `DEBOUNCE_TICKS` defaults to `999_999`, about 10 ms at 100 MHz; testbenches
   may override it with a smaller value for faster simulation.
 
+### `top_vga_debug.v`
+
+Current top-level integration path:
+
+- Board buttons `BTNC`, `BTNU`, `BTND`, `BTNL`, and `BTNR` connect to
+  `button_input.v`.
+- `button_input.v` outputs `btn_start_pulse`, `btn_left_pulse`,
+  `btn_right_pulse`, `btn_rotate_pulse`, and `btn_soft_drop_hold`.
+- These five signals connect directly to `game_core.v`.
+- `game_core.v` provides board query data, current piece state, score, lines,
+  level, and game state to `tetris_video.v`.
+- `tetris_video.v` drives `VGA_R`, `VGA_G`, `VGA_B`, `VGA_HS`, and `VGA_VS`.
+
+`BTNC` is the only start/pause/resume/restart button in this debug top. The
+meaning is decided by `game_core.v` according to the current game state. The
+debug top does not generate an automatic start pulse.
+
 ### `game_core_minimal.v`
 
 ```verilog
