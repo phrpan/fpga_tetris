@@ -332,6 +332,23 @@ Current integration scope:
 - `DEBOUNCE_TICKS` defaults to `999_999`, about 10 ms at 100 MHz; testbenches
   may override it with a smaller value for faster simulation.
 
+### `top_vga_debug.v` Input-to-Video Integration
+
+Current debug-top connection:
+
+```text
+BTNC/BTNU/BTND/BTNL/BTNR -> button_input -> game_core -> tetris_video
+```
+
+Rules:
+
+- `top_vga_debug.v` uses the formal `button_input` module for board buttons.
+- It must not generate an automatic start pulse during normal interactive
+  debug, so the game starts only after `BTNC` produces `btn_start_pulse`.
+- `BTNC` is interpreted by `game_core` according to state: start from title,
+  pause in play, resume in pause, and restart in Game Over.
+- `BTND` remains a debounced hold-level soft-drop input.
+
 ### `game_core_minimal.v`
 
 ```verilog
@@ -406,16 +423,20 @@ Level-based gravity behavior:
   Verilog `case` statement; no division, multiplication, or wide board logic is
   used for this speed selection.
 - `btn_soft_drop_hold` continues to use the fixed `SOFT_FALL_TICKS` interval.
+- If a piece locks after being advanced by soft drop, `game_core.v` requires
+  `btn_soft_drop_hold` to return to 0 before soft drop can affect the next
+  spawned piece. This prevents one long BTND press from accelerating several
+  consecutive pieces into Game Over.
 - Mapping:
-  - level 1: `5,000,000` ticks
-  - level 2: `4,500,000` ticks
-  - level 3: `4,000,000` ticks
-  - level 4: `3,500,000` ticks
-  - level 5: `3,000,000` ticks
-  - level 6: `2,500,000` ticks
-  - level 7: `2,000,000` ticks
-  - level 8: `1,500,000` ticks
-  - level 9 and above: `1,000,000` ticks
+  - level 1: `50,000,000` ticks
+  - level 2: `45,000,000` ticks
+  - level 3: `40,000,000` ticks
+  - level 4: `35,000,000` ticks
+  - level 5: `30,000,000` ticks
+  - level 6: `25,000,000` ticks
+  - level 7: `20,000,000` ticks
+  - level 8: `15,000,000` ticks
+  - level 9 and above: `10,000,000` ticks
 
 Pause/resume behavior:
 
@@ -428,6 +449,9 @@ Pause/resume behavior:
 - While in `GS_PAUSE`, gravity does not advance, left/right/rotate/soft-drop
   inputs are ignored, and board, current piece, score, lines, and level remain
   unchanged.
+- VGA rendering should still draw the current active piece in `GS_PAUSE` using
+  the held `cur_piece_type`, `cur_piece_rot`, `cur_piece_x`, and `cur_piece_y`
+  values.
 
 This section documents helper modules used inside `game_core`. These are internal game-core datapath interfaces, not VGA or IO external interfaces.
 

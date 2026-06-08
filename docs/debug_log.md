@@ -379,3 +379,49 @@
 - `tb_button_input.v` 增加自动检查，覆盖 start/left/right/rotate 单周期 pulse、按住不重复、短抖动过滤、soft drop 按住持续高、释放后变低和 reset 清零。
 - `tb_debounce.v` 增加自动检查，覆盖复位、抖动过滤、稳定按下、稳定释放和多按键同时输入。
 - `tb_one_pulse.v` 增加自动检查，覆盖单 bit 上升沿、多 bit 同时上升沿、按住不重复和释放不触发。
+## 19. feature/vga-ui 上板问题最小修复
+
+调试目标：
+
+- 修复 VGA UI 增强分支上板时发现的三个现象：长按 BTND 后多个后续方块连续快速下落、BTNU 旋转时活动方块偶发隐藏、BTNC 暂停后活动方块不显示。
+
+遇到的问题：
+
+- `btn_soft_drop_hold` 是按住型输入，原逻辑在当前方块锁定并生成下一块后仍会继续使用 soft drop 周期，导致一次长按可能跨多个方块持续加速。
+- `tetris_video.v` 的活动方块显示条件只覆盖 `GS_SPAWN`、`GS_PLAY` 和 `GS_LOCK`，没有覆盖 `GS_PAUSE`，暂停时 VGA 不画当前活动方块。
+- 当前 `top_vga_debug.v` 仍保留早期临时按键边沿检测和自动 start pulse，不利于和正式 `button_input` 链路一致地上板验证。
+
+解决方法：
+
+- 在 `game_core.v` 内部增加 soft drop release guard：当某个方块因 soft drop 推进并最终锁定后，下一块在 BTND 未释放前只按普通 gravity 周期下落；检测到 `btn_soft_drop_hold == 0` 后，soft drop 才重新生效。
+- 保持旋转逻辑为 candidate 先检查、碰撞通过后再提交到 `cur_piece_rot`；旋转失败时保持 `cur_piece_x`、`cur_piece_y` 和 `cur_piece_rot` 不变。
+- 在 `tetris_video.v` 的活动方块显示条件中加入 `GS_PAUSE`，暂停时继续显示当前活动方块。
+- 将 `top_vga_debug.v` 接回正式 `button_input`，移除自动 start 和临时按键边沿检测。
+
+验证结果：
+
+- `tb_game_core.v` 增加了 soft drop 长按保护、旋转成功/失败保持、pause 状态保持等自动检查，仿真结束仍应输出 `PASS`。
+- 该修复不修改 `button_input.v`、`debounce.v`、`one_pulse.v`、`vga_timing.v`、`constraints/` 或 `vivado/`。
+## 20. tb_game_core level-speed 预期同步
+
+调试目标：
+
+- 修复 `tb_game_core.v` 在 level-speed 回归测试中的误报，使测试预期与当前 `feature/vga-ui` 分支采用的慢速 gravity 表一致。
+
+遇到的问题：
+
+- XSim 输出 `FAIL: at its shorter gravity threshold`。
+- 失败场景是 level 普通自动下落速度测试，不是 soft drop release guard、rotate 或 pause 测试。
+- 当前 `game_core.v` 采用慢速表：level 1 为 `50,000,000` ticks，level 2 为 `45,000,000` ticks。
+- `tb_game_core.v` 仍使用旧速度表中的 `4,500,000` ticks 作为 level 2 阈值，导致计数远未达到当前 RTL 的 level 2 下落阈值。
+
+解决方法：
+
+- 不修改 `game_core.v`，因为当前分支确认采用慢速 gravity 表。
+- 将 `tb_game_core.v` 中 level-speed 测试使用的 level 2 阈值从 `26'd4500000` 同步为 `26'd45000000`。
+- 同步更新 `docs/interface_spec.md` 中 level 到 gravity tick 的映射说明。
+
+验证结果：
+
+- level-speed 测试意图保持不变：level 1 在 level 2 阈值处不应下落，level 2 到达自己的较短阈值时应下落。
+- 下一步需要重新运行 Vivado XSim 的 `tb_game_core`，确认仿真最终输出 `PASS`。

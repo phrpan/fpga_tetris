@@ -33,45 +33,26 @@ module top_vga_debug (
 
     wire pix_clk = pix_div[1];
 
-    reg [23:0] start_cnt;
-    reg btn_start_pulse_auto;
+    wire btn_start_pulse;
+    wire btn_left_pulse;
+    wire btn_right_pulse;
+    wire btn_rotate_pulse;
+    wire btn_soft_drop_hold;
 
-    always @(posedge clk_100m) begin
-        if (rst) begin
-            start_cnt <= 24'd0;
-            btn_start_pulse_auto <= 1'b0;
-        end else begin
-            if (start_cnt < 24'd1000)
-                start_cnt <= start_cnt + 1'b1;
-
-            btn_start_pulse_auto <= (start_cnt == 24'd500);
-        end
-    end
-
-    reg btnl_d;
-    reg btnr_d;
-    reg btnu_d;
-    reg btnc_d;
-
-    always @(posedge clk_100m) begin
-        if (rst) begin
-            btnl_d <= 1'b0;
-            btnr_d <= 1'b0;
-            btnu_d <= 1'b0;
-            btnc_d <= 1'b0;
-        end else begin
-            btnl_d <= BTNL;
-            btnr_d <= BTNR;
-            btnu_d <= BTNU;
-            btnc_d <= BTNC;
-        end
-    end
-
-    wire btn_left_pulse     = BTNL & ~btnl_d;
-    wire btn_right_pulse    = BTNR & ~btnr_d;
-    wire btn_rotate_pulse   = BTNU & ~btnu_d;
-    wire btn_soft_drop_hold = BTND;
-    wire btn_start_pulse    = btn_start_pulse_auto | (BTNC & ~btnc_d);
+    button_input button_input_inst (
+        .clk_100m           (clk_100m),
+        .rst                (rst),
+        .btnc               (BTNC),
+        .btnu               (BTNU),
+        .btnd               (BTND),
+        .btnl               (BTNL),
+        .btnr               (BTNR),
+        .btn_start_pulse    (btn_start_pulse),
+        .btn_left_pulse     (btn_left_pulse),
+        .btn_right_pulse    (btn_right_pulse),
+        .btn_rotate_pulse   (btn_rotate_pulse),
+        .btn_soft_drop_hold (btn_soft_drop_hold)
+    );
 
     wire [4:0]        board_query_row;
     wire [3:0]        board_query_col;

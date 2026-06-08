@@ -54,6 +54,8 @@ module game_core (
     reg [3:0] core_phase;
     reg [25:0] gravity_counter;
     reg [25:0] normal_fall_ticks_by_level;
+    reg soft_drop_wait_release;
+    reg candidate_soft_drop;
 
     reg signed [4:0] candidate_x;
     reg signed [5:0] candidate_y;
@@ -154,6 +156,7 @@ module game_core (
     wire [3:0] block_col;
     wire [4:0] lock_row;
     wire [3:0] lock_col;
+    wire effective_soft_drop_hold;
 
     assign piece_dx_signed = {4'b0000, piece_dx};
     assign piece_dy_signed = {5'b00000, piece_dy};
@@ -169,6 +172,7 @@ module game_core (
     assign block_col = block_x_signed[3:0];
     assign lock_row = lock_y_signed[4:0];
     assign lock_col = lock_x_signed[3:0];
+    assign effective_soft_drop_hold = btn_soft_drop_hold && !soft_drop_wait_release;
 
     always @* begin
         case (level)
@@ -209,6 +213,7 @@ module game_core (
             candidate_y <= 6'sd0;
             candidate_rot <= 2'd0;
             candidate_action <= ACT_NONE;
+            candidate_soft_drop <= 1'b0;
             check_idx <= 2'd0;
             check_collision <= 1'b0;
             lock_idx <= 2'd0;
@@ -221,9 +226,14 @@ module game_core (
             clear_count_reg <= 3'd0;
             score_clear_event <= 1'b0;
             score_restart_rst <= 1'b0;
+            soft_drop_wait_release <= 1'b0;
+            candidate_soft_drop <= 1'b0;
         end else begin
             score_clear_event <= 1'b0;
             score_restart_rst <= 1'b0;
+            if (!btn_soft_drop_hold) begin
+                soft_drop_wait_release <= 1'b0;
+            end
 
             case (core_phase)
                 PH_TITLE: begin
@@ -251,6 +261,7 @@ module game_core (
                     candidate_y <= 6'sd0;
                     candidate_rot <= 2'd0;
                     candidate_action <= ACT_SPAWN;
+                    candidate_soft_drop <= 1'b0;
                     check_idx <= 2'd0;
                     check_collision <= 1'b0;
                     gravity_counter <= 26'd0;
@@ -294,6 +305,7 @@ module game_core (
                         candidate_y <= cur_piece_y;
                         candidate_rot <= cur_piece_rot;
                         candidate_action <= ACT_MOVE;
+                        candidate_soft_drop <= 1'b0;
                         check_idx <= 2'd0;
                         check_collision <= 1'b0;
                         core_phase <= PH_CHECK;
@@ -302,6 +314,7 @@ module game_core (
                         candidate_y <= cur_piece_y;
                         candidate_rot <= cur_piece_rot;
                         candidate_action <= ACT_MOVE;
+                        candidate_soft_drop <= 1'b0;
                         check_idx <= 2'd0;
                         check_collision <= 1'b0;
                         core_phase <= PH_CHECK;
@@ -310,14 +323,16 @@ module game_core (
                         candidate_y <= cur_piece_y;
                         candidate_rot <= cur_piece_rot + 1'b1;
                         candidate_action <= ACT_ROTATE;
+                        candidate_soft_drop <= 1'b0;
                         check_idx <= 2'd0;
                         check_collision <= 1'b0;
                         core_phase <= PH_CHECK;
-                    end else if (gravity_counter >= (btn_soft_drop_hold ? SOFT_FALL_TICKS : normal_fall_ticks_by_level)) begin
+                    end else if (gravity_counter >= (effective_soft_drop_hold ? SOFT_FALL_TICKS : normal_fall_ticks_by_level)) begin
                         candidate_x <= cur_piece_x;
                         candidate_y <= cur_piece_y + 1'b1;
                         candidate_rot <= cur_piece_rot;
                         candidate_action <= ACT_DOWN;
+                        candidate_soft_drop <= effective_soft_drop_hold;
                         check_idx <= 2'd0;
                         check_collision <= 1'b0;
                         gravity_counter <= 26'd0;
@@ -353,6 +368,9 @@ module game_core (
                             if (candidate_action == ACT_DOWN) begin
                                 lock_idx <= 2'd0;
                                 candidate_rot <= cur_piece_rot;
+                                if (candidate_soft_drop) begin
+                                    soft_drop_wait_release <= 1'b1;
+                                end
                                 core_phase <= PH_LOCK;
                                 game_state <= GS_LOCK;
                             end else begin
@@ -513,6 +531,8 @@ module game_core (
                     candidate_y <= 6'sd0;
                     candidate_rot <= 2'd0;
                     candidate_action <= ACT_NONE;
+                    candidate_soft_drop <= 1'b0;
+                    soft_drop_wait_release <= 1'b0;
                     check_idx <= 2'd0;
                     check_collision <= 1'b0;
                     lock_idx <= 2'd0;

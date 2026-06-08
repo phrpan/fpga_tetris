@@ -31,6 +31,9 @@ module tb_game_core;
     reg [15:0] saved_score;
     reg [7:0] saved_lines;
     reg [3:0] saved_level;
+    reg [2:0] saved_piece_type;
+    integer tb_row;
+    integer tb_col;
 
     game_core dut (
         .clk_100m(clk_100m),
@@ -138,6 +141,44 @@ module tb_game_core;
         end
     endtask
 
+    task clear_internal_board;
+        begin
+            for (tb_row = 0; tb_row < BOARD_ROWS; tb_row = tb_row + 1) begin
+                for (tb_col = 0; tb_col < BOARD_COLS; tb_col = tb_col + 1) begin
+                    dut.board[tb_row][tb_col] = CELL_EMPTY;
+                end
+            end
+        end
+    endtask
+
+    task force_play_piece;
+        input [2:0] piece_type_value;
+        input [1:0] piece_rot_value;
+        input signed [4:0] piece_x_value;
+        input signed [5:0] piece_y_value;
+        begin
+            @(negedge clk_100m);
+            clear_internal_board();
+            dut.core_phase = 4'd3;
+            dut.game_state = GS_PLAY;
+            dut.cur_piece_type = piece_type_value;
+            dut.cur_piece_rot = piece_rot_value;
+            dut.cur_piece_x = piece_x_value;
+            dut.cur_piece_y = piece_y_value;
+            dut.candidate_x = piece_x_value;
+            dut.candidate_y = piece_y_value;
+            dut.candidate_rot = piece_rot_value;
+            dut.candidate_action = 3'd0;
+            dut.candidate_soft_drop = 1'b0;
+            dut.soft_drop_wait_release = 1'b0;
+            dut.check_idx = 2'd0;
+            dut.check_collision = 1'b0;
+            dut.lock_idx = 2'd0;
+            dut.gravity_counter = 26'd0;
+            @(posedge clk_100m);
+        end
+    endtask
+
     task force_game_over_context;
         begin
             @(negedge clk_100m);
@@ -152,6 +193,8 @@ module tb_game_core;
             dut.cur_piece_rot = 2'd0;
             dut.cur_piece_x = 5'sd3;
             dut.cur_piece_y = 6'sd0;
+            dut.candidate_soft_drop = 1'b0;
+            dut.soft_drop_wait_release = 1'b0;
             @(posedge clk_100m);
         end
     endtask
@@ -172,6 +215,8 @@ module tb_game_core;
             dut.candidate_y = 6'sd0;
             dut.candidate_rot = 2'd0;
             dut.candidate_action = 3'd0;
+            dut.candidate_soft_drop = 1'b0;
+            dut.soft_drop_wait_release = 1'b0;
             dut.check_idx = 2'd0;
             dut.check_collision = 1'b0;
             dut.gravity_counter = forced_counter;
@@ -233,6 +278,24 @@ module tb_game_core;
             fail("rotate pulse should increment rotation");
         end
 
+        force_play_piece(PIECE_I, 2'd0, 5'sd3, 6'sd0);
+        pulse_rotate();
+        repeat (8) @(posedge clk_100m);
+        if (cur_piece_x != 5'sd3 ||
+            cur_piece_y != 6'sd0 ||
+            cur_piece_rot != 2'd1) begin
+            fail("valid rotate should update only rotation");
+        end
+
+        force_play_piece(PIECE_I, 2'd1, 5'sd7, 6'sd0);
+        pulse_rotate();
+        repeat (8) @(posedge clk_100m);
+        if (cur_piece_x != 5'sd7 ||
+            cur_piece_y != 6'sd0 ||
+            cur_piece_rot != 2'd1) begin
+            fail("failed rotate should keep x/y/rot unchanged");
+        end
+
         btn_soft_drop_hold = 1'b1;
         repeat (80) @(posedge clk_100m);
         btn_soft_drop_hold = 1'b0;
@@ -243,6 +306,7 @@ module tb_game_core;
         saved_piece_x = cur_piece_x;
         saved_piece_y = cur_piece_y;
         saved_piece_rot = cur_piece_rot;
+        saved_piece_type = cur_piece_type;
         saved_score = score;
         saved_lines = lines;
         saved_level = level;
@@ -265,8 +329,9 @@ module tb_game_core;
         end
         if (cur_piece_x != saved_piece_x ||
             cur_piece_y != saved_piece_y ||
-            cur_piece_rot != saved_piece_rot) begin
-            fail("pause should hold current piece position and rotation");
+            cur_piece_rot != saved_piece_rot ||
+            cur_piece_type != saved_piece_type) begin
+            fail("pause should hold current piece type, position, and rotation");
         end
         if (score != saved_score || lines != saved_lines || level != saved_level) begin
             fail("pause should hold score/lines/level");
@@ -276,6 +341,33 @@ module tb_game_core;
         repeat (2) @(posedge clk_100m);
         if (game_state != GS_PLAY) begin
             fail("start pulse in GS_PAUSE should resume GS_PLAY");
+        end
+
+        force_play_piece(PIECE_T, 2'd0, 5'sd3, 6'sd18);
+        btn_soft_drop_hold = 1'b1;
+        @(negedge clk_100m);
+        dut.gravity_counter = 26'd5;
+        @(posedge clk_100m);
+        repeat (900) @(posedge clk_100m);
+        if (game_state != GS_PLAY) begin
+            fail("soft-drop lock should eventually spawn back to GS_PLAY");
+        end
+        if (cur_piece_y != 6'sd0) begin
+            fail("held soft drop should not immediately accelerate the next spawned piece");
+        end
+
+        repeat (32) @(posedge clk_100m);
+        if (cur_piece_y != 6'sd0) begin
+            fail("soft-drop release guard should hold until BTND is released");
+        end
+
+        btn_soft_drop_hold = 1'b0;
+        repeat (4) @(posedge clk_100m);
+        btn_soft_drop_hold = 1'b1;
+        repeat (24) @(posedge clk_100m);
+        btn_soft_drop_hold = 1'b0;
+        if (cur_piece_y == 6'sd0) begin
+            fail("soft drop should work again after BTND is released and pressed again");
         end
 
         board_query_row = cur_piece_y[4:0];
@@ -315,13 +407,13 @@ module tb_game_core;
             fail("restart should clear spawn-blocking board cell");
         end
 
-        force_play_gravity_context(4'd1, 26'd4500000);
+        force_play_gravity_context(4'd1, 26'd45000000);
         repeat (8) @(posedge clk_100m);
         if (cur_piece_y != 6'sd0) begin
             fail("level 1 should not fall at the level 2 threshold");
         end
 
-        force_play_gravity_context(4'd2, 26'd4500000);
+        force_play_gravity_context(4'd2, 26'd45000000);
         repeat (8) @(posedge clk_100m);
         if (cur_piece_y <= 6'sd0) begin
             fail("level 2 should fall at its shorter gravity threshold");
