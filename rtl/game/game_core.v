@@ -172,15 +172,15 @@ module game_core (
 
     always @* begin
         case (level)
-            4'd1: normal_fall_ticks_by_level = 26'd5000000;
-            4'd2: normal_fall_ticks_by_level = 26'd4500000;
-            4'd3: normal_fall_ticks_by_level = 26'd4000000;
-            4'd4: normal_fall_ticks_by_level = 26'd3500000;
-            4'd5: normal_fall_ticks_by_level = 26'd3000000;
-            4'd6: normal_fall_ticks_by_level = 26'd2500000;
-            4'd7: normal_fall_ticks_by_level = 26'd2000000;
-            4'd8: normal_fall_ticks_by_level = 26'd1500000;
-            default: normal_fall_ticks_by_level = 26'd1000000;
+            4'd1: normal_fall_ticks_by_level = 26'd50000000;
+            4'd2: normal_fall_ticks_by_level = 26'd45000000;
+            4'd3: normal_fall_ticks_by_level = 26'd40000000;
+            4'd4: normal_fall_ticks_by_level = 26'd35000000;
+            4'd5: normal_fall_ticks_by_level = 26'd30000000;
+            4'd6: normal_fall_ticks_by_level = 26'd25000000;
+            4'd7: normal_fall_ticks_by_level = 26'd20000000;
+            4'd8: normal_fall_ticks_by_level = 26'd15000000;
+            default: normal_fall_ticks_by_level = 26'd10000000;
         endcase
     end
 
