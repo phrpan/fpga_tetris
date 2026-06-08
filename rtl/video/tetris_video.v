@@ -499,6 +499,110 @@ module tetris_video (
 
     assign lines_digits_on =
         lines_d0_on || lines_d1_on || lines_d2_on;
+    
+
+        // ------------------------------------------------------------
+    // Text labels
+    // ------------------------------------------------------------
+
+    wire title_label_on;
+    wire next_label_on;
+    wire score_label_on;
+    wire level_label_on;
+    wire lines_label_on;
+    wire gameover_label_on;
+    wire press_c_label_on;
+
+    // Top title: FPGA TETRIS
+    vga_text_label #(
+        .LABEL_ID(6),
+        .CHAR_COUNT(11),
+        .X0(246),
+        .Y0(10),
+        .SCALE(2)
+    ) label_title (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .text_on(title_label_on)
+    );
+
+    // NEXT label
+    vga_text_label #(
+        .LABEL_ID(0),
+        .CHAR_COUNT(4),
+        .X0(NEXT_X0 + 43),
+        .Y0(NEXT_Y0 + 12),
+        .SCALE(2)
+    ) label_next (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .text_on(next_label_on)
+    );
+
+    // SCORE label
+    vga_text_label #(
+        .LABEL_ID(1),
+        .CHAR_COUNT(5),
+        .X0(INFO_X0 + 42),
+        .Y0(INFO_Y0 + 8),
+        .SCALE(2)
+    ) label_score (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .text_on(score_label_on)
+    );
+
+    // LEVEL label
+    vga_text_label #(
+        .LABEL_ID(2),
+        .CHAR_COUNT(5),
+        .X0(INFO_X0 + 42),
+        .Y0(INFO_Y0 + 78),
+        .SCALE(2)
+    ) label_level (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .text_on(level_label_on)
+    );
+
+    // LINES label
+    vga_text_label #(
+        .LABEL_ID(3),
+        .CHAR_COUNT(5),
+        .X0(INFO_X0 + 42),
+        .Y0(INFO_Y0 + 148),
+        .SCALE(2)
+    ) label_lines (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .text_on(lines_label_on)
+    );
+
+    // GAME OVER text
+    vga_text_label #(
+        .LABEL_ID(4),
+        .CHAR_COUNT(9),
+        .X0(238),
+        .Y0(205),
+        .SCALE(3)
+    ) label_gameover (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .text_on(gameover_label_on)
+    );
+
+    // PRESS C text
+    vga_text_label #(
+        .LABEL_ID(5),
+        .CHAR_COUNT(7),
+        .X0(250),
+        .Y0(240),
+        .SCALE(2)
+    ) label_press_c (
+        .pixel_x(pixel_x),
+        .pixel_y(pixel_y),
+        .text_on(press_c_label_on)
+    );
     // ------------------------------------------------------------
     // Color mapping
     // ------------------------------------------------------------
@@ -583,8 +687,12 @@ module tetris_video (
             rgb = 12'h000;
         end
 
-        // Game Over overlay
-        else if ((game_state == GS_GAME_OVER) && gameover_border) begin
+          // Game Over overlay
+        else if ((game_state == GS_GAME_OVER) && gameover_label_on) begin
+            rgb = 12'hfff;
+        end else if ((game_state == GS_GAME_OVER) && press_c_label_on) begin
+            rgb = 12'hff0;
+        end else if ((game_state == GS_GAME_OVER) && gameover_border) begin
             rgb = 12'hf00;
         end else if ((game_state == GS_GAME_OVER) && in_gameover_panel) begin
             rgb = 12'h300;
@@ -611,6 +719,22 @@ module tetris_video (
             rgb = board_color;
         end else if (pixel_is_next_piece) begin
             rgb = next_color;
+         end else if (title_label_on) begin
+            rgb = 12'hfff;
+        end else if (next_label_on) begin
+            rgb = 12'h0ff;
+        end else if (score_label_on) begin
+            rgb = 12'h0f0;
+        end else if (level_label_on) begin
+            rgb = 12'hff0;
+        end else if (lines_label_on) begin
+            rgb = 12'h0ff;
+         end else if (score_digits_on) begin
+            rgb = 12'h0f0;
+        end else if (level_digits_on) begin
+            rgb = 12'hff0;
+        end else if (lines_digits_on) begin
+            rgb = 12'h0ff;
         end else if (score_digits_on) begin
             rgb = 12'h0f0;
         end else if (level_digits_on) begin
