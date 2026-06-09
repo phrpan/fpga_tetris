@@ -425,3 +425,77 @@
 
 - level-speed 测试意图保持不变：level 1 在 level 2 阈值处不应下落，level 2 到达自己的较短阈值时应下落。
 - 下一步需要重新运行 Vivado XSim 的 `tb_game_core`，确认仿真最终输出 `PASS`。
+
+## 21. 七段数码管显示模块集成前修复
+
+调试目标：
+
+- 在不接入 `top_vga_debug.v` 的前提下，先修复七段数码管显示模块自身和 testbench，为后续 VGA + 七段 + LED 联合上板调试做准备。
+
+遇到的问题：
+
+- `display.v` 原扫描逻辑每个 100MHz 时钟切换一次位选，动态扫描频率过高，可能导致上板亮度和显示稳定性不理想。
+- `tb_seven_seg_driver.v` 实例化端口名与 `seven_seg_driver.v` 不一致，使用 `.clk(clk)` 而不是 `.clk_100m(clk)`。
+- `tb_seven_seg_driver.v` 使用了 `for (integer ...)` 等 SystemVerilog 风格写法，不符合 Verilog-2001 要求。
+- `tb_display.v` 和 `tb_seven_seg_driver.v` 主要依赖波形观察，缺少自动 PASS/FAIL 检查。
+
+解决方法：
+
+- `display.v` 增加参数 `SCAN_DIV_TICKS`，硬件默认值为 `17'd100000`，即每 100000 个 `clk_100m` 周期切换一次扫描位；对外接口保持不变。
+- `tb_seven_seg_driver.v` 修正实例化端口名为 `.clk_100m(clk)`，并改为 Verilog-2001 兼容写法。
+- `tb_seven_seg_driver.v` 增加自检查，覆盖数字 0~9、字母 L/S、非法输入默认显示 0，以及 `an[7:0]` 低有效位选。
+- `tb_display.v` 使用较小的 `SCAN_DIV_TICKS` 参数加速仿真，并自动检查 score 两位、level 两位、S/L 标签及位选轮转是否出现。
+
+验证结果：
+
+- 两个 testbench 均设计为无错误时输出 `PASS`，有错误时输出 `FAIL: ...`。
+- 本轮未修改 `top_vga_debug.v`、`game_core.v`、IO 按键模块、VGA 时序模块、constraints 或 vivado 目录。
+
+## 22. VGA + 七段数码管 + LED 状态顶层集成
+
+调试目标：
+
+- 在 `top_vga_debug.v` 中完成 VGA、正式按键输入、游戏核心、七段数码管和 LED 状态显示的联合顶层连接，为下一步上板综合和 bitstream 调试做准备。
+
+遇到的问题：
+
+- `top_vga_debug.v` 原本只有 VGA 和 LED 调试输出，没有七段数码管端口。
+- 原 LED 输出由若干 `assign LED[...]` 显示 `game_state`、当前方块类型和坐标；如果直接再接入 `led_status.v` 会造成 LED 多驱动。
+- 七段数码管约束文件使用端口名 `an[7:0]` 和 `ca_g[6:0]`，顶层端口必须与之保持一致。
+
+解决方法：
+
+- 在 `top_vga_debug.v` 顶层新增 `an[7:0]` 和 `ca_g[6:0]` 输出端口。
+- 例化 `display.v`，将 `score[7:0]` 和 `{4'd0, level}` 接入七段显示模块；第一版显示 score 低两位、level 两位以及 S/L 标签，暂不显示 lines。
+- 例化 `led_status.v`，使用 `game_state` 驱动 `LED[15:0]`。
+- 移除原有 LED 调试 assign，避免 LED 总线多驱动。
+- 未接入 `led_blink.v`，未使用 `constraints/led_ports.xdc`。
+
+验证结果：
+
+- 本轮未修改 `game_core.v`、按键输入模块、VGA 渲染模块、VGA 时序模块、`constraints/Nexys4DDR.xdc` 或 `vivado/`。
+- 下一步需要在 Vivado 工程中加入 `display.v`、`seven_seg_driver.v`、`led_status.v`，并加入或启用 `constraints/seven_seg_ports.xdc` 后，对 `top_vga_debug` 运行 synthesis、implementation 和 bitstream。
+
+## 23. led_blink 与 led_status 的 LED mux 集成
+
+调试目标：
+
+- 在 `top_vga_debug.v` 中接入 `led_blink.v`，使 Game Over 状态下 LED 使用闪烁提示；非 Game Over 状态下继续使用 `led_status.v` 状态灯。
+
+遇到的问题：
+
+- `led_status.v` 和 `led_blink.v` 都会产生 16-bit LED 输出，不能同时直接驱动顶层 `LED[15:0]`。
+- `led_blink.v` 还包含 `beep` 输出，但当前顶层没有蜂鸣器端口，本轮不新增顶层端口。
+
+解决方法：
+
+- 在 `top_vga_debug.v` 中新增 `led_status_value`、`led_blink_value`、`blink_beep_unused` 和 `game_over` 内部 wire。
+- 使用 `assign game_over = (game_state == 3'd6);` 判断 Game Over。
+- 将 `led_status.v` 的输出改接到 `led_status_value`。
+- 例化 `led_blink.v`，将 `failed` 接 `game_over`，将 `led` 接 `led_blink_value`，将 `beep` 接 `blink_beep_unused`。
+- 使用单一 mux `assign LED = game_over ? led_blink_value : led_status_value;` 驱动顶层 LED，避免多驱动。
+
+验证结果：
+
+- 本轮未修改 `game_core.v`、按键输入模块、VGA 模块、`led_status.v`、`led_blink.v`、constraints 或 vivado 目录。
+- 后续综合时需要确保 Vivado 工程中已经加入 `rtl/io/led_blink.v`。

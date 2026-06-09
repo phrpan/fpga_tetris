@@ -349,6 +349,35 @@ Rules:
   pause in play, resume in pause, and restart in Game Over.
 - `BTND` remains a debounced hold-level soft-drop input.
 
+### `top_vga_debug.v` VGA, Seven-Segment, and LED Integration
+
+Current top-level output connection:
+
+```text
+game_core score/level -> display -> an[7:0], ca_g[6:0]
+game_core game_state  -> led_status / led_blink -> LED[15:0]
+game_core state/board/piece -> tetris_video -> VGA_R/G/B, VGA_HS/VGA_VS
+```
+
+Rules:
+
+- `top_vga_debug.v` exposes seven-segment ports named `an[7:0]` and
+  `ca_g[6:0]`, matching `constraints/seven_seg_ports.xdc`.
+- `display.v` receives `score[7:0]` and `{4'd0, level}` from `game_core`.
+- The first seven-segment integration displays the low two decimal digits of
+  score, two decimal digits of level, and S/L labels.
+- Lines are not displayed on the seven-segment display in this first version.
+- `an` and `ca_g` are active low.
+- `led_status.v` and `led_blink.v` drive internal LED wires only. A single
+  top-level mux drives `LED[15:0]`, avoiding multiple drivers.
+- When `game_state == GS_GAME_OVER` (`3'd6`), `LED[15:0]` shows the
+  `led_blink.v` flashing pattern.
+- In other states, `LED[15:0]` shows the `led_status.v` state indicator.
+- The `led_blink.v` `beep` output is currently connected to an internal unused
+  wire and is not exposed as a top-level port.
+- `constraints/led_ports.xdc` is not used; LED pins continue to use the
+  existing `LED[15:0]` constraints in `constraints/Nexys4DDR.xdc`.
+
 ### `game_core_minimal.v`
 
 ```verilog
