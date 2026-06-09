@@ -379,29 +379,149 @@
 - `tb_button_input.v` 增加自动检查，覆盖 start/left/right/rotate 单周期 pulse、按住不重复、短抖动过滤、soft drop 按住持续高、释放后变低和 reset 清零。
 - `tb_debounce.v` 增加自动检查，覆盖复位、抖动过滤、稳定按下、稳定释放和多按键同时输入。
 - `tb_one_pulse.v` 增加自动检查，覆盖单 bit 上升沿、多 bit 同时上升沿、按住不重复和释放不触发。
-
-## 19. 顶层 VGA + 输入联合调试准备
+## 19. feature/vga-ui 上板问题最小修复
 
 调试目标：
 
-- 在 `top_vga_debug.v` 中接入正式 `button_input.v`，使板载按钮通过消抖和单脉冲模块驱动 `game_core.v`。
-- 暂停状态下保持当前活动方块在 VGA 画面中显示。
+- 修复 VGA UI 增强分支上板时发现的三个现象：长按 BTND 后多个后续方块连续快速下落、BTNU 旋转时活动方块偶发隐藏、BTNC 暂停后活动方块不显示。
 
 遇到的问题：
 
-- 原 `top_vga_debug.v` 使用临时按键边沿检测逻辑，没有按键消抖。
-- 原 `top_vga_debug.v` 内部存在自动 start pulse，适合 VGA 点亮测试，但不适合正式交互联调。
-- 原 `tetris_video.v` 只在 `GS_SPAWN`、`GS_PLAY` 和 `GS_LOCK` 下显示活动方块，暂停时活动方块会消失。
+- `btn_soft_drop_hold` 是按住型输入，原逻辑在当前方块锁定并生成下一块后仍会继续使用 soft drop 周期，导致一次长按可能跨多个方块持续加速。
+- `tetris_video.v` 的活动方块显示条件只覆盖 `GS_SPAWN`、`GS_PLAY` 和 `GS_LOCK`，没有覆盖 `GS_PAUSE`，暂停时 VGA 不画当前活动方块。
+- 当前 `top_vga_debug.v` 仍保留早期临时按键边沿检测和自动 start pulse，不利于和正式 `button_input` 链路一致地上板验证。
 
 解决方法：
 
-- 在 `top_vga_debug.v` 中例化 `button_input.v`。
-- 将 `BTNC`、`BTNU`、`BTND`、`BTNL`、`BTNR` 连接到 `button_input.v`。
-- 将 `button_input.v` 输出的五个信号连接到 `game_core.v`：`btn_start_pulse`、`btn_left_pulse`、`btn_right_pulse`、`btn_rotate_pulse` 和 `btn_soft_drop_hold`。
-- 移除临时按键边沿检测逻辑和自动 start pulse。
-- 在 `tetris_video.v` 的活动方块显示条件中加入 `GS_PAUSE`。
+- 在 `game_core.v` 内部增加 soft drop release guard：当某个方块因 soft drop 推进并最终锁定后，下一块在 BTND 未释放前只按普通 gravity 周期下落；检测到 `btn_soft_drop_hold == 0` 后，soft drop 才重新生效。
+- 保持旋转逻辑为 candidate 先检查、碰撞通过后再提交到 `cur_piece_rot`；旋转失败时保持 `cur_piece_x`、`cur_piece_y` 和 `cur_piece_rot` 不变。
+- 在 `tetris_video.v` 的活动方块显示条件中加入 `GS_PAUSE`，暂停时继续显示当前活动方块。
+- 将 `top_vga_debug.v` 接回正式 `button_input`，移除自动 start 和临时按键边沿检测。
 
 验证结果：
 
-- 代码连接关系已准备好进行综合和上板联调。
-- 后续需要在板上验证：`BTNC` 开始、暂停、继续和 Game Over 后重启；`BTNL/BTNR/BTNU/BTND` 控制移动、旋转和软降；暂停时活动方块保持显示。
+- `tb_game_core.v` 增加了 soft drop 长按保护、旋转成功/失败保持、pause 状态保持等自动检查，仿真结束仍应输出 `PASS`。
+- 该修复不修改 `button_input.v`、`debounce.v`、`one_pulse.v`、`vga_timing.v`、`constraints/` 或 `vivado/`。
+## 20. tb_game_core level-speed 预期同步
+
+调试目标：
+
+- 修复 `tb_game_core.v` 在 level-speed 回归测试中的误报，使测试预期与当前 `feature/vga-ui` 分支采用的慢速 gravity 表一致。
+
+遇到的问题：
+
+- XSim 输出 `FAIL: at its shorter gravity threshold`。
+- 失败场景是 level 普通自动下落速度测试，不是 soft drop release guard、rotate 或 pause 测试。
+- 当前 `game_core.v` 采用慢速表：level 1 为 `50,000,000` ticks，level 2 为 `45,000,000` ticks。
+- `tb_game_core.v` 仍使用旧速度表中的 `4,500,000` ticks 作为 level 2 阈值，导致计数远未达到当前 RTL 的 level 2 下落阈值。
+
+解决方法：
+
+- 不修改 `game_core.v`，因为当前分支确认采用慢速 gravity 表。
+- 将 `tb_game_core.v` 中 level-speed 测试使用的 level 2 阈值从 `26'd4500000` 同步为 `26'd45000000`。
+- 同步更新 `docs/interface_spec.md` 中 level 到 gravity tick 的映射说明。
+
+验证结果：
+
+- level-speed 测试意图保持不变：level 1 在 level 2 阈值处不应下落，level 2 到达自己的较短阈值时应下落。
+- 下一步需要重新运行 Vivado XSim 的 `tb_game_core`，确认仿真最终输出 `PASS`。
+
+## 21. 七段数码管显示模块集成前修复
+
+调试目标：
+
+- 在不接入 `top_vga_debug.v` 的前提下，先修复七段数码管显示模块自身和 testbench，为后续 VGA + 七段 + LED 联合上板调试做准备。
+
+遇到的问题：
+
+- `display.v` 原扫描逻辑每个 100MHz 时钟切换一次位选，动态扫描频率过高，可能导致上板亮度和显示稳定性不理想。
+- `tb_seven_seg_driver.v` 实例化端口名与 `seven_seg_driver.v` 不一致，使用 `.clk(clk)` 而不是 `.clk_100m(clk)`。
+- `tb_seven_seg_driver.v` 使用了 `for (integer ...)` 等 SystemVerilog 风格写法，不符合 Verilog-2001 要求。
+- `tb_display.v` 和 `tb_seven_seg_driver.v` 主要依赖波形观察，缺少自动 PASS/FAIL 检查。
+
+解决方法：
+
+- `display.v` 增加参数 `SCAN_DIV_TICKS`，硬件默认值为 `17'd100000`，即每 100000 个 `clk_100m` 周期切换一次扫描位；对外接口保持不变。
+- `tb_seven_seg_driver.v` 修正实例化端口名为 `.clk_100m(clk)`，并改为 Verilog-2001 兼容写法。
+- `tb_seven_seg_driver.v` 增加自检查，覆盖数字 0~9、字母 L/S、非法输入默认显示 0，以及 `an[7:0]` 低有效位选。
+- `tb_display.v` 使用较小的 `SCAN_DIV_TICKS` 参数加速仿真，并自动检查 score 两位、level 两位、S/L 标签及位选轮转是否出现。
+
+验证结果：
+
+- 两个 testbench 均设计为无错误时输出 `PASS`，有错误时输出 `FAIL: ...`。
+- 本轮未修改 `top_vga_debug.v`、`game_core.v`、IO 按键模块、VGA 时序模块、constraints 或 vivado 目录。
+
+## 22. VGA + 七段数码管 + LED 状态顶层集成
+
+调试目标：
+
+- 在 `top_vga_debug.v` 中完成 VGA、正式按键输入、游戏核心、七段数码管和 LED 状态显示的联合顶层连接，为下一步上板综合和 bitstream 调试做准备。
+
+遇到的问题：
+
+- `top_vga_debug.v` 原本只有 VGA 和 LED 调试输出，没有七段数码管端口。
+- 原 LED 输出由若干 `assign LED[...]` 显示 `game_state`、当前方块类型和坐标；如果直接再接入 `led_status.v` 会造成 LED 多驱动。
+- 七段数码管约束文件使用端口名 `an[7:0]` 和 `ca_g[6:0]`，顶层端口必须与之保持一致。
+
+解决方法：
+
+- 在 `top_vga_debug.v` 顶层新增 `an[7:0]` 和 `ca_g[6:0]` 输出端口。
+- 例化 `display.v`，将 `score[7:0]` 和 `{4'd0, level}` 接入七段显示模块；第一版显示 score 低两位、level 两位以及 S/L 标签，暂不显示 lines。
+- 例化 `led_status.v`，使用 `game_state` 驱动 `LED[15:0]`。
+- 移除原有 LED 调试 assign，避免 LED 总线多驱动。
+- 未接入 `led_blink.v`，未使用 `constraints/led_ports.xdc`。
+
+验证结果：
+
+- 本轮未修改 `game_core.v`、按键输入模块、VGA 渲染模块、VGA 时序模块、`constraints/Nexys4DDR.xdc` 或 `vivado/`。
+- 下一步需要在 Vivado 工程中加入 `display.v`、`seven_seg_driver.v`、`led_status.v`，并加入或启用 `constraints/seven_seg_ports.xdc` 后，对 `top_vga_debug` 运行 synthesis、implementation 和 bitstream。
+
+## 23. led_blink 与 led_status 的 LED mux 集成
+
+调试目标：
+
+- 在 `top_vga_debug.v` 中接入 `led_blink.v`，使 Game Over 状态下 LED 使用闪烁提示；非 Game Over 状态下继续使用 `led_status.v` 状态灯。
+
+遇到的问题：
+
+- `led_status.v` 和 `led_blink.v` 都会产生 16-bit LED 输出，不能同时直接驱动顶层 `LED[15:0]`。
+- `led_blink.v` 还包含 `beep` 输出，但当前顶层没有蜂鸣器端口，本轮不新增顶层端口。
+
+解决方法：
+
+- 在 `top_vga_debug.v` 中新增 `led_status_value`、`led_blink_value`、`blink_beep_unused` 和 `game_over` 内部 wire。
+- 使用 `assign game_over = (game_state == 3'd6);` 判断 Game Over。
+- 将 `led_status.v` 的输出改接到 `led_status_value`。
+- 例化 `led_blink.v`，将 `failed` 接 `game_over`，将 `led` 接 `led_blink_value`，将 `beep` 接 `blink_beep_unused`。
+- 使用单一 mux `assign LED = game_over ? led_blink_value : led_status_value;` 驱动顶层 LED，避免多驱动。
+
+验证结果：
+
+- 本轮未修改 `game_core.v`、按键输入模块、VGA 模块、`led_status.v`、`led_blink.v`、constraints 或 vivado 目录。
+- 后续综合时需要确保 Vivado 工程中已经加入 `rtl/io/led_blink.v`。
+
+## 24. feature/vga-ui 的 tetris_video UI/logo 手工融合
+
+调试目标：
+
+- 将 `origin/feature/vga-ui` 中的 VGA UI 布局优化和队标 logo 显示手工融合到当前稳定分支，同时保留当前分支已经修复的游戏显示 bug。
+
+遇到的问题：
+
+- 远程 `feature/vga-ui` 的 `tetris_video.v` 新增了 logo 显示和 UI 布局调整，但其活动方块显示条件漏掉了 `GS_PAUSE`。
+- 远程版本删除了 VGA 上的 `LINES` 标签和 lines 数字显示，而当前融合目标要求继续保留 lines 显示。
+- 不能直接覆盖当前 `tetris_video.v`，否则可能丢失 pause 显示修复和当前稳定接口约定。
+
+解决方法：
+
+- 手工移植 NEXT/INFO 区域布局调整，将信息区放到左侧，将 Next 预览移动到右侧。
+- 新增 `LOGO_X0`、`LOGO_Y0`、`LOGO_W`、`LOGO_H`，以及 `in_logo_area`、logo 坐标映射、`logo_addr`、`logo_rgb` 和 `in_logo_area_d`。
+- 在 `tetris_video.v` 中例化 `logo_rom.v`，从 `logo_128x128.mem` 读取 128x128 12-bit RGB logo 数据，并在 VGA 画面右上区域显示。
+- 保留 `show_active_piece` 中的 `GS_PAUSE` 条件，暂停时活动方块继续显示。
+- 保留 `LINES` 标签、lines BCD 转换和 lines 数字显示，仅调整其在左侧信息区内的位置。
+- 保持 `tetris_video.v` 顶层端口、board query 单口读取方式和 game_core 接口不变。
+
+验证结果：
+
+- 本轮未修改 `game_core.v`、`top_vga_debug.v`、`rtl/io/`、constraints 或 vivado 目录。
+- 后续 Vivado 工程需要包含 `rtl/video/logo_rom.v` 和 `rtl/video/logo_128x128.mem`。

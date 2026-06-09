@@ -11,6 +11,9 @@ module top_vga_debug (
     input  wire        BTNR,
 
     output wire [15:0] LED,
+    output wire [7:0]  an,
+    output wire [6:0]  ca_g,
+    output wire        beep,
 
     output wire [3:0]  VGA_R,
     output wire [3:0]  VGA_G,
@@ -33,26 +36,11 @@ module top_vga_debug (
 
     wire pix_clk = pix_div[1];
 
+    wire btn_start_pulse;
     wire btn_left_pulse;
     wire btn_right_pulse;
     wire btn_rotate_pulse;
     wire btn_soft_drop_hold;
-    wire btn_start_pulse;
-
-    wire [4:0]        board_query_row;
-    wire [3:0]        board_query_col;
-    wire [3:0]        board_cell_value;
-
-    wire [2:0]        cur_piece_type;
-    wire [1:0]        cur_piece_rot;
-    wire signed [4:0] cur_piece_x;
-    wire signed [5:0] cur_piece_y;
-
-    wire [2:0]        next_piece_type;
-    wire [15:0]       score;
-    wire [7:0]        lines;
-    wire [3:0]        level;
-    wire [2:0]        game_state;
 
     button_input button_input_inst (
         .clk_100m           (clk_100m),
@@ -68,6 +56,27 @@ module top_vga_debug (
         .btn_rotate_pulse   (btn_rotate_pulse),
         .btn_soft_drop_hold (btn_soft_drop_hold)
     );
+
+    wire [4:0]        board_query_row;
+    wire [3:0]        board_query_col;
+    wire [3:0]        board_cell_value;
+
+    wire [2:0]        cur_piece_type;
+    wire [1:0]        cur_piece_rot;
+    wire signed [4:0] cur_piece_x;
+    wire signed [5:0] cur_piece_y;
+
+    wire [2:0]        next_piece_type;
+    wire [15:0]       score;
+    wire [7:0]        lines;
+    wire [3:0]        level;
+    wire [2:0]        game_state;
+    wire [15:0]       led_status_value;
+    wire [15:0]       led_blink_value;
+    wire              game_over;
+
+    assign game_over = (game_state == 3'd6);
+    assign LED = game_over ? led_blink_value : led_status_value;
 
     game_core core_inst (
         .clk_100m           (clk_100m),
@@ -121,9 +130,35 @@ module top_vga_debug (
         .VGA_B              (VGA_B)
     );
 
-    assign LED[2:0]   = game_state;
-    assign LED[5:3]   = cur_piece_type;
-    assign LED[9:6]   = cur_piece_x[3:0];
-    assign LED[15:10] = cur_piece_y[5:0];
+    display display_inst (
+        .clk_100m (clk_100m),
+        .rst      (rst),
+        .score    (score[7:0]),
+        .level    ({4'd0, level}),
+        .an       (an),
+        .ca_g     (ca_g)
+    );
+
+    led_status led_status_inst (
+        .clk_100m   (clk_100m),
+        .rst        (rst),
+        .game_state (game_state),
+        .led        (led_status_value)
+    );
+
+    led_blink led_blink_inst (
+        .clk_100m (clk_100m),
+        .rst      (rst),
+        .failed   (game_over),
+        .led      (led_blink_value)
+    );
+    
+    
+    beep beep_inst (
+        .clk_100m (clk_100m),
+        .rst      (rst),
+        .failed   (game_over),
+        .beep     (beep)
+    );
 
 endmodule

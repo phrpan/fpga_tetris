@@ -332,22 +332,68 @@ Current integration scope:
 - `DEBOUNCE_TICKS` defaults to `999_999`, about 10 ms at 100 MHz; testbenches
   may override it with a smaller value for faster simulation.
 
-### `top_vga_debug.v`
+### `top_vga_debug.v` Input-to-Video Integration
 
-Current top-level integration path:
+Current debug-top connection:
 
-- Board buttons `BTNC`, `BTNU`, `BTND`, `BTNL`, and `BTNR` connect to
-  `button_input.v`.
-- `button_input.v` outputs `btn_start_pulse`, `btn_left_pulse`,
-  `btn_right_pulse`, `btn_rotate_pulse`, and `btn_soft_drop_hold`.
-- These five signals connect directly to `game_core.v`.
-- `game_core.v` provides board query data, current piece state, score, lines,
-  level, and game state to `tetris_video.v`.
-- `tetris_video.v` drives `VGA_R`, `VGA_G`, `VGA_B`, `VGA_HS`, and `VGA_VS`.
+```text
+BTNC/BTNU/BTND/BTNL/BTNR -> button_input -> game_core -> tetris_video
+```
 
-`BTNC` is the only start/pause/resume/restart button in this debug top. The
-meaning is decided by `game_core.v` according to the current game state. The
-debug top does not generate an automatic start pulse.
+Rules:
+
+- `top_vga_debug.v` uses the formal `button_input` module for board buttons.
+- It must not generate an automatic start pulse during normal interactive
+  debug, so the game starts only after `BTNC` produces `btn_start_pulse`.
+- `BTNC` is interpreted by `game_core` according to state: start from title,
+  pause in play, resume in pause, and restart in Game Over.
+- `BTND` remains a debounced hold-level soft-drop input.
+
+### `top_vga_debug.v` VGA, Seven-Segment, and LED Integration
+
+Current top-level output connection:
+
+```text
+game_core score/level -> display -> an[7:0], ca_g[6:0]
+game_core game_state  -> led_status / led_blink -> LED[15:0]
+game_core state/board/piece -> tetris_video -> VGA_R/G/B, VGA_HS/VGA_VS
+```
+
+Rules:
+
+- `top_vga_debug.v` exposes seven-segment ports named `an[7:0]` and
+  `ca_g[6:0]`, matching `constraints/seven_seg_ports.xdc`.
+- `display.v` receives `score[7:0]` and `{4'd0, level}` from `game_core`.
+- The first seven-segment integration displays the low two decimal digits of
+  score, two decimal digits of level, and S/L labels.
+- Lines are not displayed on the seven-segment display in this first version.
+- `an` and `ca_g` are active low.
+- `led_status.v` and `led_blink.v` drive internal LED wires only. A single
+  top-level mux drives `LED[15:0]`, avoiding multiple drivers.
+- When `game_state == GS_GAME_OVER` (`3'd6`), `LED[15:0]` shows the
+  `led_blink.v` flashing pattern.
+- In other states, `LED[15:0]` shows the `led_status.v` state indicator.
+- The `led_blink.v` `beep` output is currently connected to an internal unused
+  wire and is not exposed as a top-level port.
+- `constraints/led_ports.xdc` is not used; LED pins continue to use the
+  existing `LED[15:0]` constraints in `constraints/Nexys4DDR.xdc`.
+
+### `tetris_video.v` Polished VGA UI
+
+Current VGA UI integration:
+
+- `tetris_video.v` keeps the documented game-core interface unchanged.
+- Board data is still read only through `board_query_row`,
+  `board_query_col`, and `board_cell_value`.
+- The VGA UI includes a left-side score/level/lines information box, a
+  right-side next-piece preview box, and an upper-right team logo region.
+- The team logo is read from `logo_rom.v`, which uses
+  `logo_128x128.mem` as its initialization file.
+- The active piece must still be drawn in `GS_SPAWN`, `GS_PLAY`, `GS_PAUSE`,
+  and `GS_LOCK`.
+- The VGA UI keeps the `LINES` label and lines number display.
+- This UI integration does not introduce `board_flat` or any new game-core
+  ports.
 
 ### `game_core_minimal.v`
 
@@ -423,16 +469,20 @@ Level-based gravity behavior:
   Verilog `case` statement; no division, multiplication, or wide board logic is
   used for this speed selection.
 - `btn_soft_drop_hold` continues to use the fixed `SOFT_FALL_TICKS` interval.
+- If a piece locks after being advanced by soft drop, `game_core.v` requires
+  `btn_soft_drop_hold` to return to 0 before soft drop can affect the next
+  spawned piece. This prevents one long BTND press from accelerating several
+  consecutive pieces into Game Over.
 - Mapping:
-  - level 1: `5,000,000` ticks
-  - level 2: `4,500,000` ticks
-  - level 3: `4,000,000` ticks
-  - level 4: `3,500,000` ticks
-  - level 5: `3,000,000` ticks
-  - level 6: `2,500,000` ticks
-  - level 7: `2,000,000` ticks
-  - level 8: `1,500,000` ticks
-  - level 9 and above: `1,000,000` ticks
+  - level 1: `50,000,000` ticks
+  - level 2: `45,000,000` ticks
+  - level 3: `40,000,000` ticks
+  - level 4: `35,000,000` ticks
+  - level 5: `30,000,000` ticks
+  - level 6: `25,000,000` ticks
+  - level 7: `20,000,000` ticks
+  - level 8: `15,000,000` ticks
+  - level 9 and above: `10,000,000` ticks
 
 Pause/resume behavior:
 
@@ -445,6 +495,9 @@ Pause/resume behavior:
 - While in `GS_PAUSE`, gravity does not advance, left/right/rotate/soft-drop
   inputs are ignored, and board, current piece, score, lines, and level remain
   unchanged.
+- VGA rendering should still draw the current active piece in `GS_PAUSE` using
+  the held `cur_piece_type`, `cur_piece_rot`, `cur_piece_x`, and `cur_piece_y`
+  values.
 
 This section documents helper modules used inside `game_core`. These are internal game-core datapath interfaces, not VGA or IO external interfaces.
 
