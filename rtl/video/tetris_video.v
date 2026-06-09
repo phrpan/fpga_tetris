@@ -41,12 +41,12 @@ module tetris_video (
     localparam TITLE_X1 = 640;
     localparam TITLE_Y1 = 36;
 
-    localparam NEXT_X0 = 40;
-    localparam NEXT_Y0 = 80;
-    localparam NEXT_W  = 130;
-    localparam NEXT_H  = 130;
+    localparam NEXT_X0 = 486;
+    localparam NEXT_Y0 = 165;
+    localparam NEXT_W  = 104;
+    localparam NEXT_H  = 104;
 
-    localparam INFO_X0 = 455;
+    localparam INFO_X0 = 40;
     localparam INFO_Y0 = 80;
     localparam INFO_W  = 145;
     localparam INFO_H  = 230;
@@ -60,6 +60,11 @@ module tetris_video (
     localparam GAMEOVER_Y0 = 170;
     localparam GAMEOVER_W  = 300;
     localparam GAMEOVER_H  = 130;
+
+    localparam LOGO_X0 = 490;
+    localparam LOGO_Y0 = 55;
+    localparam LOGO_W  = 96;
+    localparam LOGO_H  = 96;
 
     wire video_on;
     wire [9:0] pixel_x;
@@ -131,6 +136,7 @@ module tetris_video (
     wire in_info_box;
     wire in_help_bar;
     wire in_gameover_panel;
+    wire in_logo_area;
 
     assign in_title_bar =
         (pixel_x >= TITLE_X0) &&
@@ -161,6 +167,12 @@ module tetris_video (
         (pixel_x <  GAMEOVER_X0 + GAMEOVER_W) &&
         (pixel_y >= GAMEOVER_Y0) &&
         (pixel_y <  GAMEOVER_Y0 + GAMEOVER_H);
+
+    assign in_logo_area =
+        (pixel_x >= LOGO_X0) &&
+        (pixel_x <  LOGO_X0 + LOGO_W) &&
+        (pixel_y >= LOGO_Y0) &&
+        (pixel_y <  LOGO_Y0 + LOGO_H);
 
     wire next_box_border;
     wire info_box_border;
@@ -209,8 +221,8 @@ module tetris_video (
     assign info_sep_line =
         in_info_box &&
         (
-            (pixel_y == INFO_Y0 + 70) ||
-            (pixel_y == INFO_Y0 + 140)
+            (pixel_y == INFO_Y0 + 85) ||
+            (pixel_y == INFO_Y0 + 155)
         );
 
    
@@ -304,8 +316,8 @@ module tetris_video (
     // Next piece preview, simple version
     // ------------------------------------------------------------
     localparam NEXT_CELL = 16;
-    localparam NEXT_PX0  = 72;
-    localparam NEXT_PY0  = 118;
+    localparam NEXT_PX0  = NEXT_X0 + 20;
+    localparam NEXT_PY0  = NEXT_Y0 + 48;
 
     wire [1:0] ndx0;
     wire [1:0] ndy0;
@@ -380,6 +392,37 @@ module tetris_video (
     wire pixel_is_next_piece;
     assign pixel_is_next_piece = next0_on || next1_on || next2_on || next3_on;
 
+    // ------------------------------------------------------------
+    // Team logo ROM display
+    // ------------------------------------------------------------
+    wire [6:0] logo_x;
+    wire [6:0] logo_y;
+    wire [6:0] logo_src_x;
+    wire [6:0] logo_src_y;
+    wire [13:0] logo_addr;
+    wire [11:0] logo_rgb;
+
+    reg in_logo_area_d;
+
+    assign logo_x = pixel_x - LOGO_X0;
+    assign logo_y = pixel_y - LOGO_Y0;
+    assign logo_src_x = (logo_x * 4) / 3;
+    assign logo_src_y = (logo_y * 4) / 3;
+    assign logo_addr = {logo_src_y, logo_src_x};
+
+    logo_rom logo_inst (
+        .pix_clk (pix_clk),
+        .addr    (logo_addr),
+        .rgb     (logo_rgb)
+    );
+
+    always @(posedge pix_clk) begin
+        if (rst)
+            in_logo_area_d <= 1'b0;
+        else
+            in_logo_area_d <= in_logo_area;
+    end
+
 
     // ------------------------------------------------------------
     // Decimal number display for SCORE / LEVEL / LINES
@@ -417,70 +460,70 @@ module tetris_video (
     wire lines_d1_on;
     wire lines_d2_on;
 
-    vga_digit7seg #(.X0(INFO_X0 + 15),  .Y0(INFO_Y0 + 25)) score_digit0 (
+    vga_digit7seg #(.X0(INFO_X0 + 15),  .Y0(INFO_Y0 + 38)) score_digit0 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(score_bcd[19:16]),
         .digit_on(score_d0_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 38),  .Y0(INFO_Y0 + 25)) score_digit1 (
+    vga_digit7seg #(.X0(INFO_X0 + 38),  .Y0(INFO_Y0 + 38)) score_digit1 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(score_bcd[15:12]),
         .digit_on(score_d1_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 61),  .Y0(INFO_Y0 + 25)) score_digit2 (
+    vga_digit7seg #(.X0(INFO_X0 + 61),  .Y0(INFO_Y0 + 38)) score_digit2 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(score_bcd[11:8]),
         .digit_on(score_d2_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 84),  .Y0(INFO_Y0 + 25)) score_digit3 (
+    vga_digit7seg #(.X0(INFO_X0 + 84),  .Y0(INFO_Y0 + 38)) score_digit3 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(score_bcd[7:4]),
         .digit_on(score_d3_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 107), .Y0(INFO_Y0 + 25)) score_digit4 (
+    vga_digit7seg #(.X0(INFO_X0 + 107), .Y0(INFO_Y0 + 38)) score_digit4 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(score_bcd[3:0]),
         .digit_on(score_d4_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 45), .Y0(INFO_Y0 + 95)) level_digit0 (
+    vga_digit7seg #(.X0(INFO_X0 + 45), .Y0(INFO_Y0 + 123)) level_digit0 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(level_bcd[7:4]),
         .digit_on(level_d0_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 70), .Y0(INFO_Y0 + 95)) level_digit1 (
+    vga_digit7seg #(.X0(INFO_X0 + 70), .Y0(INFO_Y0 + 123)) level_digit1 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(level_bcd[3:0]),
         .digit_on(level_d1_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 35), .Y0(INFO_Y0 + 165)) lines_digit0 (
+    vga_digit7seg #(.X0(INFO_X0 + 35), .Y0(INFO_Y0 + 188)) lines_digit0 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(lines_bcd[11:8]),
         .digit_on(lines_d0_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 60), .Y0(INFO_Y0 + 165)) lines_digit1 (
+    vga_digit7seg #(.X0(INFO_X0 + 60), .Y0(INFO_Y0 + 188)) lines_digit1 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(lines_bcd[7:4]),
         .digit_on(lines_d1_on)
     );
 
-    vga_digit7seg #(.X0(INFO_X0 + 85), .Y0(INFO_Y0 + 165)) lines_digit2 (
+    vga_digit7seg #(.X0(INFO_X0 + 85), .Y0(INFO_Y0 + 188)) lines_digit2 (
         .pixel_x(pixel_x),
         .pixel_y(pixel_y),
         .digit(lines_bcd[3:0]),
@@ -531,8 +574,8 @@ module tetris_video (
     vga_text_label #(
         .LABEL_ID(0),
         .CHAR_COUNT(4),
-        .X0(NEXT_X0 + 43),
-        .Y0(NEXT_Y0 + 12),
+        .X0(NEXT_X0 + 28),
+        .Y0(NEXT_Y0 + 10),
         .SCALE(2)
     ) label_next (
         .pixel_x(pixel_x),
@@ -545,7 +588,7 @@ module tetris_video (
         .LABEL_ID(1),
         .CHAR_COUNT(5),
         .X0(INFO_X0 + 42),
-        .Y0(INFO_Y0 + 8),
+        .Y0(INFO_Y0 + 12),
         .SCALE(2)
     ) label_score (
         .pixel_x(pixel_x),
@@ -558,7 +601,7 @@ module tetris_video (
         .LABEL_ID(2),
         .CHAR_COUNT(5),
         .X0(INFO_X0 + 42),
-        .Y0(INFO_Y0 + 78),
+        .Y0(INFO_Y0 + 97),
         .SCALE(2)
     ) label_level (
         .pixel_x(pixel_x),
@@ -571,7 +614,7 @@ module tetris_video (
         .LABEL_ID(3),
         .CHAR_COUNT(5),
         .X0(INFO_X0 + 42),
-        .Y0(INFO_Y0 + 148),
+        .Y0(INFO_Y0 + 162),
         .SCALE(2)
     ) label_lines (
         .pixel_x(pixel_x),
@@ -596,7 +639,7 @@ module tetris_video (
     vga_text_label #(
         .LABEL_ID(5),
         .CHAR_COUNT(7),
-        .X0(250),
+        .X0(278),
         .Y0(240),
         .SCALE(2)
     ) label_press_c (
@@ -760,6 +803,8 @@ module tetris_video (
             rgb = 12'h012;
         end else if (in_info_box) begin
             rgb = 12'h210;
+        end else if (in_logo_area_d && (logo_rgb != 12'h000)) begin
+            rgb = logo_rgb;
         end else if (in_help_bar) begin
             rgb = 12'h111;
         end else begin

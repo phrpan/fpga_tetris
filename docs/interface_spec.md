@@ -378,6 +378,23 @@ Rules:
 - `constraints/led_ports.xdc` is not used; LED pins continue to use the
   existing `LED[15:0]` constraints in `constraints/Nexys4DDR.xdc`.
 
+### `tetris_video.v` Polished VGA UI
+
+Current VGA UI integration:
+
+- `tetris_video.v` keeps the documented game-core interface unchanged.
+- Board data is still read only through `board_query_row`,
+  `board_query_col`, and `board_cell_value`.
+- The VGA UI includes a left-side score/level/lines information box, a
+  right-side next-piece preview box, and an upper-right team logo region.
+- The team logo is read from `logo_rom.v`, which uses
+  `logo_128x128.mem` as its initialization file.
+- The active piece must still be drawn in `GS_SPAWN`, `GS_PLAY`, `GS_PAUSE`,
+  and `GS_LOCK`.
+- The VGA UI keeps the `LINES` label and lines number display.
+- This UI integration does not introduce `board_flat` or any new game-core
+  ports.
+
 ### `game_core_minimal.v`
 
 ```verilog

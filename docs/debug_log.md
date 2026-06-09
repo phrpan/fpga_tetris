@@ -499,3 +499,29 @@
 
 - 本轮未修改 `game_core.v`、按键输入模块、VGA 模块、`led_status.v`、`led_blink.v`、constraints 或 vivado 目录。
 - 后续综合时需要确保 Vivado 工程中已经加入 `rtl/io/led_blink.v`。
+
+## 24. feature/vga-ui 的 tetris_video UI/logo 手工融合
+
+调试目标：
+
+- 将 `origin/feature/vga-ui` 中的 VGA UI 布局优化和队标 logo 显示手工融合到当前稳定分支，同时保留当前分支已经修复的游戏显示 bug。
+
+遇到的问题：
+
+- 远程 `feature/vga-ui` 的 `tetris_video.v` 新增了 logo 显示和 UI 布局调整，但其活动方块显示条件漏掉了 `GS_PAUSE`。
+- 远程版本删除了 VGA 上的 `LINES` 标签和 lines 数字显示，而当前融合目标要求继续保留 lines 显示。
+- 不能直接覆盖当前 `tetris_video.v`，否则可能丢失 pause 显示修复和当前稳定接口约定。
+
+解决方法：
+
+- 手工移植 NEXT/INFO 区域布局调整，将信息区放到左侧，将 Next 预览移动到右侧。
+- 新增 `LOGO_X0`、`LOGO_Y0`、`LOGO_W`、`LOGO_H`，以及 `in_logo_area`、logo 坐标映射、`logo_addr`、`logo_rgb` 和 `in_logo_area_d`。
+- 在 `tetris_video.v` 中例化 `logo_rom.v`，从 `logo_128x128.mem` 读取 128x128 12-bit RGB logo 数据，并在 VGA 画面右上区域显示。
+- 保留 `show_active_piece` 中的 `GS_PAUSE` 条件，暂停时活动方块继续显示。
+- 保留 `LINES` 标签、lines BCD 转换和 lines 数字显示，仅调整其在左侧信息区内的位置。
+- 保持 `tetris_video.v` 顶层端口、board query 单口读取方式和 game_core 接口不变。
+
+验证结果：
+
+- 本轮未修改 `game_core.v`、`top_vga_debug.v`、`rtl/io/`、constraints 或 vivado 目录。
+- 后续 Vivado 工程需要包含 `rtl/video/logo_rom.v` 和 `rtl/video/logo_128x128.mem`。
