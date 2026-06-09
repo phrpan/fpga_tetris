@@ -26,8 +26,8 @@ module seven_seg_driver (
     localparam SEG_7 = 7'b1111000;  // 数字 7
     localparam SEG_8 = 7'b0000000;  // 数字 8
     localparam SEG_9 = 7'b0010000;  // 数字 9
-    localparam SEG_L = 7'b1000110;  // 字母 L（10）：顶横+左上+左下+底横亮
-    localparam SEG_S = 7'b1010010;  // 字母 S（11）：顶横+中横+底横+左上+右下亮
+    localparam SEG_L = 7'b1000111;  // 字母 L（10）
+    localparam SEG_S = 7'b0010010;  // 字母 S（11）
 
     // ========================================
     // 组合逻辑：根据 digit_value 查表得到段码

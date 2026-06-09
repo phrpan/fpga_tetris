@@ -13,6 +13,7 @@ module top_vga_debug (
     output wire [15:0] LED,
     output wire [7:0]  an,
     output wire [6:0]  ca_g,
+    output wire        beep,
 
     output wire [3:0]  VGA_R,
     output wire [3:0]  VGA_G,
@@ -72,7 +73,6 @@ module top_vga_debug (
     wire [2:0]        game_state;
     wire [15:0]       led_status_value;
     wire [15:0]       led_blink_value;
-    wire              blink_beep_unused;
     wire              game_over;
 
     assign game_over = (game_state == 3'd6);
@@ -150,8 +150,15 @@ module top_vga_debug (
         .clk_100m (clk_100m),
         .rst      (rst),
         .failed   (game_over),
-        .led      (led_blink_value),
-        .beep     (blink_beep_unused)
+        .led      (led_blink_value)
+    );
+    
+    
+    beep beep_inst (
+        .clk_100m (clk_100m),
+        .rst      (rst),
+        .failed   (game_over),
+        .beep     (beep)
     );
 
 endmodule
