@@ -314,7 +314,7 @@ top_vga_debug
 | 成员 | 分工 |
 |---|---|
 | phr | 项目整体规划、游戏核心逻辑设计，负责 `game_core`、状态机、碰撞检测、消行、计分等级、资源优化与核心仿真 |
-| lxh | VGA 显示与 UI 设计，负责 `vga_timing`、`tetris_video`、文字/数字显示、NEXT 预览、Logo 显示与 VGA 上板调试 |
+| lhx | VGA 显示与 UI 设计，负责 `vga_timing`、`tetris_video`、文字/数字显示、NEXT 预览、Logo 显示与 VGA 上板调试 |
 | zbsj | 输入输出外设设计，负责 `button_input`、按键消抖、单周期脉冲、七段数码管、LED 状态与 Game Over 闪烁及蜂鸣器 |
 | co | 系统集成、Vivado 综合实现、bitstream 生成、上板联调、Git 协作与文档整理 |
 
